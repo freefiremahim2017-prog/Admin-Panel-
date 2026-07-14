@@ -855,12 +855,25 @@
       ],
       adSlot1Links: Array.from({length:25}, (_,i)=>`https://example.com/ad1-${i+1}`),
       adSlot2Links: Array.from({length:25}, (_,i)=>`https://example.com/ad2-${i+1}`),
+      adSlot3Links: Array.from({length:25}, (_,i)=>`https://example.com/ad3-${i+1}`),
+      adSlot4Links: Array.from({length:25}, (_,i)=>`https://example.com/ad4-${i+1}`),
       adSlot1Reward: 1,
       adSlot2Reward: 1,
+      adSlot3Reward: 1,
+      adSlot4Reward: 1,
       adSlot1CooldownHours: 24,
       adSlot2CooldownHours: 24,
+      adSlot3CooldownHours: 24,
+      adSlot4CooldownHours: 24,
       adSlot1DurationSeconds: 15,
       adSlot2DurationSeconds: 15,
+      adSlot3DurationSeconds: 15,
+      adSlot4DurationSeconds: 15,
+      // Slot 3, 4 ডিফল্ট বন্ধ (ইউজার প্যানেলে দেখাবে না) — Ad Slots পেজ থেকে টগল অন করলেই চালু হবে
+      adSlot1Enabled: true,
+      adSlot2Enabled: true,
+      adSlot3Enabled: false,
+      adSlot4Enabled: false,
       minReferralsRequired: 10,
       withdrawFeePercent: 20,
       referralBonus: 1,
@@ -1002,9 +1015,16 @@
       });
     }
 
+    let adminRealtimeListenersAttached = false;
     function attachAdminRealtimeListeners() {
       const db = fb();
       if (!db) return;
+      // এই ফাংশন একাধিকবার কল হলে (যেমন onAuthStateChanged একাধিকবার ফায়ার করলে)
+      // আগে থেকেই একাধিক .on('value') listener জমে যেত, ফলে একটাই আপডেট বারবার
+      // প্রসেস হতো (ডুপ্লিকেট টোস্ট/রিরেন্ডার)। তাই দ্বিতীয়বার আর নতুন করে listener
+      // বসানো হচ্ছে না।
+      if (adminRealtimeListenersAttached) return;
+      adminRealtimeListenersAttached = true;
 
       db.ref('mahimUsers').on('value', snap => {
         const val = snap.val() || {};
@@ -1219,11 +1239,22 @@
 
     function renderTasks() {
       pageTitle.textContent = '📋 Tasks Control';
-      const cardsHtml = adminConfig.tasks.map((t, i) => `
+      const submissions = getSubmissions();
+      const cardsHtml = adminConfig.tasks.map((t, i) => {
+        const used = submissions.filter(s => s.taskIndex === i && s.status !== 'rejected').length;
+        const limit = Number(t.limit) || 0;
+        const remaining = limit > 0 ? Math.max(limit - used, 0) : null;
+        const usageInfoHtml = limit > 0
+          ? `<span style="color:${remaining <= 0 ? '#e53935' : '#2e7d32'};">${used} জন সম্পন্ন করেছে / বাকি আছে ${remaining} টি (মোট ${limit})</span>`
+          : `<span style="color:#888;">${used} জন সম্পন্ন করেছে / আনলিমিটেড</span>`;
+        return `
         <div class="card" style="margin-bottom:16px;">
           <div class="section-header">
             <h3>Task ${i+1}</h3>
-            ${t.image ? `<img src="${t.image}" style="width:36px;height:36px;border-radius:8px;object-fit:cover;" onerror="this.style.display='none'">` : ''}
+            <div style="display:flex; align-items:center; gap:10px;">
+              ${t.image ? `<img src="${t.image}" style="width:36px;height:36px;border-radius:8px;object-fit:cover;" onerror="this.style.display='none'">` : ''}
+              <button class="btn btn-danger btn-sm" onclick="deleteTask(${i})" title="Task ${i+1} ডিলিট করুন"><i class="fa-solid fa-trash"></i></button>
+            </div>
           </div>
           <div class="form-grid">
             <div class="form-group">
@@ -1242,6 +1273,11 @@
               <label>Task Image Link (URL)</label>
               <input class="form-control" id="taskImage_${i}" placeholder="https://..." value="${t.image}">
             </div>
+            <div class="form-group">
+              <label>মোট কতজন এই টাস্ক করতে পারবে (Slot Limit)</label>
+              <input type="number" min="0" class="form-control" id="taskLimit_${i}" placeholder="0 = আনলিমিটেড" value="${t.limit || ''}">
+              <small style="display:block; margin-top:4px; font-size:0.75rem;">${usageInfoHtml}</small>
+            </div>
             <div class="form-group" style="grid-column: 1 / -1;">
               <label>কাজ কি করতে হবে (নির্দেশনা)</label>
               <textarea class="form-control" id="taskInstruction_${i}" placeholder="যেমন: চ্যানেলে জয়েন করে স্ক্রিনশট জমা দিন">${t.instruction || ''}</textarea>
@@ -1249,21 +1285,45 @@
           </div>
           <button class="btn btn-primary" style="margin-top:14px;" onclick="updateSingleTask(${i})"><i class="fa-solid fa-floppy-disk"></i> Save Task ${i+1}</button>
         </div>
-      `).join('');
+      `;
+      }).join('');
 
       dynamicContent.innerHTML = `
         ${cardsHtml}
-        <button class="btn btn-primary" style="margin-top:6px;" onclick="updateTasks()">Save All Tasks</button>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
+          <button class="btn btn-primary" onclick="updateTasks()"><i class="fa-solid fa-floppy-disk"></i> Save All Tasks</button>
+          <button class="btn" style="background:var(--success); color:#fff;" onclick="addNewTask()"><i class="fa-solid fa-plus"></i> নতুন Task যোগ করুন (Task ${adminConfig.tasks.length+1})</button>
+        </div>
       `;
     }
+    window.addNewTask = function() {
+      adminConfig.tasks.push({ title: "", reward: 0, link: "", image: "", limit: 0, instruction: "" });
+      saveConfig();
+      renderTasks();
+      // নতুন যোগ হওয়া টাস্কের কার্ডে স্ক্রল করে নিয়ে যায়
+      setTimeout(() => {
+        const cards = document.querySelectorAll('#dynamicContent .card');
+        const last = cards[cards.length - 1];
+        if (last) last.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+    };
+    window.deleteTask = function(i) {
+      const t = adminConfig.tasks[i];
+      if (!confirm(`আপনি কি নিশ্চিত Task ${i+1} (${t.title || 'নাম নেই'}) ডিলিট করতে চান?`)) return;
+      adminConfig.tasks.splice(i, 1);
+      saveConfig();
+      renderTasks();
+    };
     window.updateSingleTask = function(i) {
       const t = adminConfig.tasks[i];
       t.title = document.getElementById(`taskTitle_${i}`).value;
       t.reward = parseFloat(document.getElementById(`taskReward_${i}`).value) || 0;
       t.link = document.getElementById(`taskLink_${i}`).value.trim();
       t.image = document.getElementById(`taskImage_${i}`).value.trim();
+      t.limit = parseInt(document.getElementById(`taskLimit_${i}`).value, 10) || 0;
       t.instruction = document.getElementById(`taskInstruction_${i}`).value.trim();
       saveConfig();
+      renderTasks();
     };
     window.updateTasks = function() {
       adminConfig.tasks.forEach((t, i) => {
@@ -1271,9 +1331,11 @@
         t.reward = parseFloat(document.getElementById(`taskReward_${i}`).value) || 0;
         t.link = document.getElementById(`taskLink_${i}`).value.trim();
         t.image = document.getElementById(`taskImage_${i}`).value.trim();
+        t.limit = parseInt(document.getElementById(`taskLimit_${i}`).value, 10) || 0;
         t.instruction = document.getElementById(`taskInstruction_${i}`).value.trim();
       });
       saveConfig();
+      renderTasks();
     };
 
     function renderAdSlots() {
@@ -1286,43 +1348,44 @@
           </li>
         `).join('');
       }
+      function slotCardHtml(n) {
+        const linkCount = Array.isArray(adminConfig['adSlot' + n + 'Links']) ? adminConfig['adSlot' + n + 'Links'].length : 25;
+        const enabled = adminConfig['adSlot' + n + 'Enabled'] !== false;
+        return `
+          <div class="card">
+            <div class="section-header"><h3>Ad Slot ${n} (${linkCount} Links)</h3></div>
+            <div class="toggle-switch" style="margin-bottom:14px;">
+              <label class="switch"><input type="checkbox" id="adSlot${n}EnabledInput" ${enabled ? 'checked' : ''} onchange="toggleAdSlotEnabled(${n}, this.checked)"><span class="slider"></span></label>
+              <strong>${enabled ? 'ইউজার প্যানেলে চালু আছে' : 'ইউজার প্যানেলে বন্ধ আছে'}</strong>
+            </div>
+            <div style="margin-bottom:12px;">
+              <label>প্রতিটি এড দেখার রিওয়ার্ড (${adminConfig.currency})</label>
+              <input type="number" class="form-control" id="adSlot${n}RewardInput" value="${adminConfig['adSlot' + n + 'Reward'] !== undefined ? adminConfig['adSlot' + n + 'Reward'] : 1}" min="0" step="0.01" onchange="updateAdSlotReward(${n}, this.value)">
+            </div>
+            <div style="margin-bottom:12px;">
+              <label>রিসেট টাইম (ঘন্টা) — সব এড দেখা শেষ হলে কতক্ষণ পর আবার দেখা যাবে</label>
+              <input type="number" class="form-control" id="adSlot${n}CooldownInput" value="${adminConfig['adSlot' + n + 'CooldownHours'] !== undefined ? adminConfig['adSlot' + n + 'CooldownHours'] : 24}" min="0" step="1" onchange="updateAdSlotCooldown(${n}, this.value)">
+            </div>
+            <div style="margin-bottom:12px;">
+              <label>এড দেখার সময় (সেকেন্ড) — ইউজারকে কতক্ষণ এড দেখতে হবে</label>
+              <input type="number" class="form-control" id="adSlot${n}DurationInput" value="${adminConfig['adSlot' + n + 'DurationSeconds'] !== undefined ? adminConfig['adSlot' + n + 'DurationSeconds'] : 15}" min="1" step="1" onchange="updateAdSlotDuration(${n}, this.value)">
+            </div>
+            <ul class="link-list">${listHtml('adSlot' + n + 'Links')}</ul>
+          </div>
+        `;
+      }
       dynamicContent.innerHTML = `
         <div class="ad-slots-grid">
-          <div class="card">
-            <div class="section-header"><h3>Ad Slot 1 (25 Links)</h3></div>
-            <div style="margin-bottom:12px;">
-              <label>প্রতিটি এড দেখার রিওয়ার্ড (${adminConfig.currency})</label>
-              <input type="number" class="form-control" id="adSlot1RewardInput" value="${adminConfig.adSlot1Reward !== undefined ? adminConfig.adSlot1Reward : 1}" min="0" step="0.01" onchange="updateAdSlotReward(1, this.value)">
-            </div>
-            <div style="margin-bottom:12px;">
-              <label>রিসেট টাইম (ঘন্টা) — সব এড দেখা শেষ হলে কতক্ষণ পর আবার দেখা যাবে</label>
-              <input type="number" class="form-control" id="adSlot1CooldownInput" value="${adminConfig.adSlot1CooldownHours !== undefined ? adminConfig.adSlot1CooldownHours : 24}" min="0" step="1" onchange="updateAdSlotCooldown(1, this.value)">
-            </div>
-            <div style="margin-bottom:12px;">
-              <label>এড দেখার সময় (সেকেন্ড) — ইউজারকে কতক্ষণ এড দেখতে হবে</label>
-              <input type="number" class="form-control" id="adSlot1DurationInput" value="${adminConfig.adSlot1DurationSeconds !== undefined ? adminConfig.adSlot1DurationSeconds : 15}" min="1" step="1" onchange="updateAdSlotDuration(1, this.value)">
-            </div>
-            <ul class="link-list">${listHtml('adSlot1Links')}</ul>
-          </div>
-          <div class="card">
-            <div class="section-header"><h3>Ad Slot 2 (25 Links)</h3></div>
-            <div style="margin-bottom:12px;">
-              <label>প্রতিটি এড দেখার রিওয়ার্ড (${adminConfig.currency})</label>
-              <input type="number" class="form-control" id="adSlot2RewardInput" value="${adminConfig.adSlot2Reward !== undefined ? adminConfig.adSlot2Reward : 1}" min="0" step="0.01" onchange="updateAdSlotReward(2, this.value)">
-            </div>
-            <div style="margin-bottom:12px;">
-              <label>রিসেট টাইম (ঘন্টা) — সব এড দেখা শেষ হলে কতক্ষণ পর আবার দেখা যাবে</label>
-              <input type="number" class="form-control" id="adSlot2CooldownInput" value="${adminConfig.adSlot2CooldownHours !== undefined ? adminConfig.adSlot2CooldownHours : 24}" min="0" step="1" onchange="updateAdSlotCooldown(2, this.value)">
-            </div>
-            <div style="margin-bottom:12px;">
-              <label>এড দেখার সময় (সেকেন্ড) — ইউজারকে কতক্ষণ এড দেখতে হবে</label>
-              <input type="number" class="form-control" id="adSlot2DurationInput" value="${adminConfig.adSlot2DurationSeconds !== undefined ? adminConfig.adSlot2DurationSeconds : 15}" min="1" step="1" onchange="updateAdSlotDuration(2, this.value)">
-            </div>
-            <ul class="link-list">${listHtml('adSlot2Links')}</ul>
-          </div>
+          ${[1, 2, 3, 4].map(slotCardHtml).join('')}
         </div>
       `;
     }
+    window.toggleAdSlotEnabled = function(slotNumber, isChecked) {
+      adminConfig['adSlot' + slotNumber + 'Enabled'] = !!isChecked;
+      saveConfig();
+      renderAdSlots();
+      showToast(`Ad Slot ${slotNumber} এখন ইউজার প্যানেলে ${isChecked ? 'চালু' : 'বন্ধ'} করা হয়েছে`);
+    };
     window.updateAdSlotReward = function(slotNumber, value) {
       const reward = parseFloat(value) || 0;
       adminConfig['adSlot' + slotNumber + 'Reward'] = reward;
@@ -1556,6 +1619,13 @@
       `;
     }
 
+    // NOTE (security): balance/totalEarned এখন আর local array এডিট করে
+    // persistUsersAndWithdraws() দিয়ে পুরো user object ওভাররাইট করা হয় না।
+    // বরং Firebase-এর নিজস্ব transaction() ব্যবহার করে সরাসরি
+    // mahimUsers/{uid}/balance পাথে আপডেট পাঠানো হয় — এতে করে দুইটা এডমিন
+    // ট্যাব/ডিভাইস থেকে একসাথে balance পরিবর্তন করলেও কোনো আপডেট হারিয়ে
+    // যায় না (lost update prevented), এবং Firebase Rules (balance ফিল্ড
+    // শুধু isAdmin() লিখতে পারবে) এখানে সরাসরি এনফোর্স হয়।
     window.addUserBalance = function(userId) {
       const user = findUser(userId);
       if (!user) return;
@@ -1566,13 +1636,18 @@
         alert('সঠিক একটি পরিমাণ দিন');
         return;
       }
-      user.balance = (user.balance || 0) + amount;
-      if (amount > 0) {
-        user.totalEarned = (user.totalEarned || 0) + amount;
-      }
-      persistUsersAndWithdraws();
-      renderUsers();
-      alert(`${user.name} এর ব্যালেন্সে ${amount} ${adminConfig.currency} যোগ হয়েছে। নতুন ব্যালেন্স: ${user.balance} ${adminConfig.currency}`);
+      const db = fb();
+      if (!db) { alert('Firebase কানেক্ট নেই, চেষ্টা আবার করুন'); return; }
+      const userRef = db.ref('mahimUsers/' + userId);
+      userRef.child('balance').transaction(current => (current || 0) + amount)
+        .then(result => {
+          if (!result.committed) { alert('আপডেট ব্যর্থ হয়েছে, আবার চেষ্টা করুন'); return; }
+          if (amount > 0) {
+            userRef.child('totalEarned').transaction(current => (current || 0) + amount);
+          }
+          alert(`${user.name} এর ব্যালেন্সে ${amount} ${adminConfig.currency} যোগ হয়েছে। নতুন ব্যালেন্স: ${result.snapshot.val()} ${adminConfig.currency}`);
+        })
+        .catch(err => alert('আপডেট ব্যর্থ হয়েছে: ' + err.message));
     };
 
     window.deductUserBalance = function(userId) {
@@ -1585,15 +1660,23 @@
         alert('সঠিক একটি পরিমাণ দিন');
         return;
       }
-      const currentBalance = user.balance || 0;
-      if (amount > currentBalance) {
-        alert(`ইউজারের ব্যালেন্সে যথেষ্ট টাকা নেই। বর্তমান ব্যালেন্স: ${currentBalance} ${adminConfig.currency}`);
-        return;
-      }
-      user.balance = currentBalance - amount;
-      persistUsersAndWithdraws();
-      renderUsers();
-      alert(`${user.name} এর ব্যালেন্স থেকে ${amount} ${adminConfig.currency} কাটা হয়েছে। নতুন ব্যালেন্স: ${user.balance} ${adminConfig.currency}`);
+      const db = fb();
+      if (!db) { alert('Firebase কানেক্ট নেই, চেষ্টা আবার করুন'); return; }
+      const userRef = db.ref('mahimUsers/' + userId);
+      // transaction-এর ভেতরেই current balance চেক করা হচ্ছে, যাতে prompt
+      // দেখানোর পর ও সাবমিট করার মাঝে ব্যালেন্স বদলে গেলেও (রেসকন্ডিশন)
+      // ভুলভাবে নেগেটিভ ব্যালেন্স না হয়।
+      userRef.child('balance').transaction(current => {
+        const currentBalance = current || 0;
+        if (amount > currentBalance) return; // abort transaction
+        return currentBalance - amount;
+      }).then(result => {
+        if (!result.committed) {
+          alert('ইউজারের ব্যালেন্সে যথেষ্ট টাকা নেই, আপডেট বাতিল হয়েছে');
+          return;
+        }
+        alert(`${user.name} এর ব্যালেন্স থেকে ${amount} ${adminConfig.currency} কাটা হয়েছে। নতুন ব্যালেন্স: ${result.snapshot.val()} ${adminConfig.currency}`);
+      }).catch(err => alert('আপডেট ব্যর্থ হয়েছে: ' + err.message));
     };
 
     window.viewUserHistory = function(userId) {
@@ -1702,9 +1785,9 @@
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
               <span class="status-pill ${statusClass}">${statusLabel}</span>
               ${s.status === 'pending' ? `
-                <div class="action-btns">
-                  <button class="btn btn-success btn-sm" onclick="decideSubmission('${s.id}','approved')"><i class="fa-solid fa-check"></i></button>
-                  <button class="btn btn-danger btn-sm" onclick="decideSubmission('${s.id}','rejected')"><i class="fa-solid fa-xmark"></i></button>
+                <div class="action-btns" id="ssActions_${s.id}">
+                  <button class="btn btn-success btn-sm" onclick="decideSubmission('${s.id}','approved', this)"><i class="fa-solid fa-check"></i></button>
+                  <button class="btn btn-danger btn-sm" onclick="decideSubmission('${s.id}','rejected', this)"><i class="fa-solid fa-xmark"></i></button>
                 </div>
               ` : ''}
             </div>
@@ -1737,13 +1820,99 @@
       renderSubmissions();
     };
 
-    window.decideSubmission = function(subId, decision) {
+    window.decideSubmission = function(subId, decision, btnEl) {
+      // ডবল-ক্লিক/ডবল-ট্যাপ করলে যাতে একই সাবমিশনের জন্য এই ফাংশন দুইবার না চলে,
+      // সাথে সাথেই বাটন দুটো ডিজেবল করে দেওয়া হচ্ছে।
+      const actionsBox = btnEl ? btnEl.closest('.action-btns') : (subId ? document.getElementById('ssActions_' + subId) : null);
+      if (actionsBox) {
+        if (actionsBox.dataset.processing === '1') return; // আগে থেকেই প্রসেস হচ্ছে
+        actionsBox.dataset.processing = '1';
+        actionsBox.querySelectorAll('button').forEach(b => b.disabled = true);
+      }
+
+      const finish = (msg) => {
+        showToast(msg);
+        renderSubmissions();
+      };
+
+      const applyRejection = () => {
+        const submissions = getSubmissions();
+        const sub = submissions.find(s => s.id === subId);
+        if (!sub) return finish('স্ক্রিনশট পাওয়া যায়নি');
+        sub.status = 'rejected';
+        saveSubmissions(submissions);
+        finish('❌ স্ক্রিনশট রিজেক্ট করা হয়েছে');
+      };
+
+      if (decision !== 'approved') {
+        applyRejection();
+        return;
+      }
+
+      const db = fb();
+
+      // Firebase কানেক্টেড থাকলে সাবমিশনের নোডে একটা transaction চালানো হয়, যাতে
+      // দুইটা এডমিন ডিভাইস থেকে (বা একই ডিভাইসে বারবার) একসাথে "approve" চাপলেও
+      // রিওয়ার্ড ঠিক একবারই যোগ হয় — যেই আগে সার্ভারে পৌঁছায় শুধু সেই-ই সফল হবে।
+      if (db) {
+        db.ref('mahimTaskSubmissions/' + subId).transaction(currentVal => {
+          if (!currentVal) return currentVal; // সাবমিশন নেই, কিছু করার নেই
+          if (currentVal.status === 'approved' && currentVal.rewardGranted) {
+            return; // আগেই এপ্রুভ ও রিওয়ার্ড দেওয়া হয়ে গেছে — abort, ডাবল পেমেন্ট আটকানো হলো
+          }
+          currentVal.status = 'approved';
+          currentVal.rewardGranted = true;
+          return currentVal;
+        }).then(result => {
+          const committed = result && result.committed;
+          const sub = result && result.snapshot ? result.snapshot.val() : null;
+          const submissions = getSubmissions();
+          const localSub = submissions.find(s => s.id === subId);
+
+          if (committed && sub) {
+            // এই কলটাই প্রথম যে transaction জিতেছে — একমাত্র এখানেই রিওয়ার্ড ব্যালেন্সে যোগ হবে
+            let rewardAmount = Number(sub.reward || sub.taskReward || 0);
+            if (!rewardAmount) {
+              const matchedTask = adminConfig.tasks.find(t => t.title === sub.taskTitle);
+              if (matchedTask) rewardAmount = Number(matchedTask.reward || 0);
+            }
+            if (rewardAmount > 0) {
+              // Firebase transaction দিয়ে সরাসরি balance/totalEarned আপডেট —
+              // local array এডিট করে persist করার বদলে, যাতে অন্য কোনো
+              // সমান্তরাল আপডেটের সাথে সংঘর্ষ (lost update) না হয়।
+              const uref = db.ref('mahimUsers/' + sub.userId);
+              uref.child('balance').transaction(cur => (cur || 0) + rewardAmount);
+              uref.child('totalEarned').transaction(cur => (cur || 0) + rewardAmount);
+            }
+            if (localSub) { localSub.status = 'approved'; localSub.rewardGranted = true; }
+            saveSubmissions(submissions);
+            finish('✅ স্ক্রিনশট এপ্রুভ করা হয়েছে এবং ইউজারের ব্যালেন্সে রিওয়ার্ড যোগ হয়েছে');
+            // ---- রেফারেল বোনাস (শুধু ইউজারের প্রথম এপ্রুভড টাস্কে, একবারই) ----
+            grantReferralBonusIfEligible(sub.userId);
+          } else {
+            // অন্য কোনো ডিভাইস/ক্লিক ইতিমধ্যে এটা এপ্রুভ করে ফেলেছে — এখানে আর কোনো রিওয়ার্ড দেওয়া হবে না
+            if (localSub && sub) { localSub.status = sub.status; localSub.rewardGranted = sub.rewardGranted; }
+            saveSubmissions(submissions);
+            finish('ℹ️ এই স্ক্রিনশটটি ইতিমধ্যে প্রসেস হয়ে গেছে, নতুন করে রিওয়ার্ড দেওয়া হয়নি');
+          }
+        }).catch(() => {
+          if (actionsBox) { actionsBox.dataset.processing = ''; actionsBox.querySelectorAll('button').forEach(b => b.disabled = false); }
+          showToast('⚠️ এপ্রুভ করতে সমস্যা হয়েছে, আবার চেষ্টা করুন');
+        });
+        return;
+      }
+
+      // Firebase না থাকলে (অফলাইন/লোকাল টেস্টিং) শুধু rewardGranted ফ্ল্যাগ দিয়ে
+      // একই ডিভাইসে ডাবল-প্রসেসিং আটকানো হচ্ছে।
       const submissions = getSubmissions();
       const sub = submissions.find(s => s.id === subId);
-      if (!sub) return;
+      if (!sub) return finish('স্ক্রিনশট পাওয়া যায়নি');
 
-      if (decision === 'approved' && sub.status !== 'approved') {
-        // টাস্কের রিওয়ার্ড বের করা: সাবমিশনে সরাসরি reward থাকলে সেটা, নাহলে টাস্ক লিস্ট থেকে খুঁজে বের করা হবে
+      // NOTE: এই ব্র্যাঞ্চ শুধু তখনই চলে যখন Firebase কানেক্ট নেই (fb() === null),
+      // অর্থাৎ পুরোপুরি লোকাল টেস্টিং মোড। প্রোডাকশনে (Firebase কানেক্টেড থাকলে)
+      // সবসময় উপরের transaction()-ভিত্তিক পাথ ব্যবহার হয়, যেখানে Security Rules
+      // এবং ডাবল-পেমেন্ট প্রোটেকশন সত্যিকারভাবে এনফোর্স হয়।
+      if (!sub.rewardGranted) {
         let rewardAmount = Number(sub.reward || sub.taskReward || 0);
         if (!rewardAmount) {
           const matchedTask = adminConfig.tasks.find(t => t.title === sub.taskTitle);
@@ -1755,13 +1924,61 @@
           user.totalEarned = (user.totalEarned || 0) + rewardAmount;
           persistUsersAndWithdraws();
         }
+        sub.rewardGranted = true;
       }
-
-      sub.status = decision;
+      sub.status = 'approved';
       saveSubmissions(submissions);
-      showToast(decision === 'approved' ? '✅ স্ক্রিনশট এপ্রুভ করা হয়েছে এবং ইউজারের ব্যালেন্সে রিওয়ার্ড যোগ হয়েছে' : '❌ স্ক্রিনশট রিজেক্ট করা হয়েছে');
-      renderSubmissions();
+      finish('✅ স্ক্রিনশট এপ্রুভ করা হয়েছে এবং ইউজারের ব্যালেন্সে রিওয়ার্ড যোগ হয়েছে');
+      grantReferralBonusIfEligible(sub.userId);
     };
+
+    // ====================== রেফারেল বোনাস (ক্লাউড ফাংশন ছাড়া, এডমিন প্যানেল থেকেই) ======================
+    // ধরে নেওয়া হচ্ছে mahimUsers/{uid} নোডে এই ফিল্ডগুলো থাকবে (ইউজার সাইড অ্যাপে
+    // সাইনআপের সময় সেট করতে হবে):
+    //   referredBy          -> যে ইউজার তাকে রেফার করেছে তার uid (স্ট্রিং, একবারই সেট হয়)
+    //   referralBonusGranted-> বুলিয়ান, ডিফল্ট false — বোনাস একবার দেওয়া হয়ে গেলে true
+    // যদি আপনার ইউজার-সাইড কোডে ফিল্ডের নাম আলাদা হয় (referrerId, refBy ইত্যাদি),
+    // নিচের REFERRED_BY_FIELD / BONUS_GRANTED_FIELD কনস্ট্যান্ট দুটো বদলে দিন।
+    const REFERRED_BY_FIELD = 'referredBy';
+    const BONUS_GRANTED_FIELD = 'referralBonusGranted';
+
+    function grantReferralBonusIfEligible(referredUserId) {
+      const db = fb();
+      if (!db) return; // অফলাইন মোডে রেফারেল বোনাস স্কিপ করা হচ্ছে
+      const bonusAmount = Number(adminConfig.referralBonus || 0);
+      if (bonusAmount <= 0) return;
+
+      const userRef = db.ref('mahimUsers/' + referredUserId);
+      userRef.once('value').then(snap => {
+        const u = snap.val();
+        if (!u) return;
+        const referrerId = u[REFERRED_BY_FIELD];
+        if (!referrerId) return; // এই ইউজারকে কেউ রেফার করেনি
+
+        // এই referred ইউজারের এটাই প্রথম এপ্রুভড টাস্ক কিনা যাচাই করা হচ্ছে —
+        // referral বোনাস শুধু একজন ইউজারের প্রথম টাস্ক এপ্রুভ হলে একবারই দেওয়া হয়।
+        db.ref('mahimTaskSubmissions').orderByChild('userId').equalTo(referredUserId).once('value').then(subsSnap => {
+          const subs = subsSnap.val() || {};
+          const approvedCount = Object.values(subs).filter(s => s.status === 'approved').length;
+          if (approvedCount !== 1) return; // এটা প্রথম এপ্রুভড টাস্ক না হলে বোনাস দেওয়া হবে না
+
+          // ডাবল-পেমেন্ট প্রতিরোধ: referred ইউজারের নোডে transaction চালিয়ে
+          // BONUS_GRANTED_FIELD atomically true করা হচ্ছে। দুইটা এডমিন ট্যাব/ডিভাইস
+          // থেকে একইসাথে approve চাপলেও শুধু একজনই এই flag সেট করতে "জিতবে"।
+          userRef.child(BONUS_GRANTED_FIELD).transaction(current => {
+            if (current === true) return; // আগেই বোনাস দেওয়া হয়ে গেছে — abort
+            return true;
+          }).then(result => {
+            if (!result.committed) return; // অন্য কোনো কল আগেই বোনাস দিয়ে দিয়েছে
+            // এখানেই একমাত্র বিজয়ী কল রেফারারের ব্যালেন্সে বোনাস যোগ করবে
+            const referrerRef = db.ref('mahimUsers/' + referrerId);
+            referrerRef.child('balance').transaction(cur => (cur || 0) + bonusAmount);
+            referrerRef.child('totalEarned').transaction(cur => (cur || 0) + bonusAmount);
+            showToast(`🎁 রেফারেল বোনাস দেওয়া হয়েছে (${bonusAmount} ${adminConfig.currency})`);
+          }).catch(err => console.warn('Referral bonus transaction failed', err));
+        });
+      });
+    }
 
     window.openSsFullview = function(subId) {
       const submissions = getSubmissions();
