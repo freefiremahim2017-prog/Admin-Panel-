@@ -963,10 +963,30 @@
       localStorage.setItem('mahim_admin_config', JSON.stringify(adminConfig));
       localStorage.setItem('mahim_users', JSON.stringify(users));
       localStorage.setItem('mahim_withdraws', JSON.stringify(withdrawRequests));
-      syncConfigToFirebase();
-      syncUsersToFirebase(users);
-      syncWithdrawsToFirebase(withdrawRequests);
-      showToast('সমস্ত সেটিংস সংরক্ষণ করা হয়েছে ✅');
+
+      const db = fb();
+      if (!db) {
+        showToast('⚠️ Firebase কানেক্ট নেই — এই ডিভাইসে সেভ হয়েছে কিন্তু লাইভ অ্যাপে যায়নি');
+        return Promise.resolve(false); // এখানেও একটা Promise রিটার্ন করা হচ্ছে, যাতে কলার .then()/await করতে পারে
+      }
+
+      // আগে এখানে .catch() শুধু console.warn করত আর নিচে সবসময় "✅ সেভ হয়েছে" টোস্ট
+      // দেখানো হতো — মানে Firebase Rules ব্লক করলেও (permission-denied) এডমিন কখনো
+      // বুঝতেই পারতেন না যে আসল ডেটাবেসে কিছুই সেভ হয়নি। এখন রিয়েল রেজাল্ট দেখানো হচ্ছে,
+      // এবং পুরো Promise-টা রিটার্ন করা হচ্ছে যাতে কোনো কলার সত্যিকারের রেজাল্ট না জেনে
+      // নিজে থেকে আগেভাগে "সফল" টোস্ট দেখাতে না পারে।
+      return db.ref('mahimAdminConfig').set(splitAdminConfigForPublish(adminConfig))
+        .then(() => {
+          showToast('সমস্ত সেটিংস সংরক্ষণ করা হয়েছে ✅');
+          syncUsersToFirebase(users);
+          syncWithdrawsToFirebase(withdrawRequests);
+          return true;
+        })
+        .catch(err => {
+          console.error('❌ Firebase config সেভ ব্যর্থ (Realtime Database Rules চেক করুন):', err);
+          showToast('❌ সেভ ব্যর্থ হয়েছে: ' + (err && err.code ? err.code : 'PERMISSION_DENIED — Firebase Rules চেক করুন'));
+          throw err; // কলারকে জানানো হচ্ছে যে সেভ আসলে ব্যর্থ হয়েছে
+        });
     }
 
     function loadConfig() {
@@ -1138,7 +1158,7 @@
       adminConfig.withdrawFeePercent = parseFloat(document.getElementById('withdrawFeePercent').value) || 0;
       adminConfig.referralBonus = parseFloat(document.getElementById('referralBonus').value) || 0;
       adminConfig.telegramBotAppUrl = document.getElementById('telegramBotAppUrl').value.trim() || 'https://t.me/Go_tasks_ern_bot/app';
-      saveConfig();
+      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
     };
 
     function renderAppearance() {
@@ -1161,7 +1181,7 @@
       adminConfig.secondaryColor = document.getElementById('secondaryColor').value;
       adminConfig.logoUrl = document.getElementById('logoUrl').value;
       adminConfig.faviconUrl = document.getElementById('faviconUrl').value;
-      saveConfig();
+      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
     };
 
     function renderLinks() {
@@ -1186,7 +1206,7 @@
       adminConfig.telegramChannel3 = document.getElementById('tg3').value;
       adminConfig.youtubeLink = document.getElementById('yt').value;
       adminConfig.facebookLink = document.getElementById('fb').value;
-      saveConfig();
+      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
     };
 
     function renderImages() {
@@ -1208,7 +1228,7 @@
       adminConfig.bannerImage = document.getElementById('banner').value;
       adminConfig.taskIcon1 = document.getElementById('taskIcon1').value;
       adminConfig.taskIcon2 = document.getElementById('taskIcon2').value;
-      saveConfig();
+      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
     };
 
     function renderFeatures() {
@@ -1234,7 +1254,7 @@
       adminConfig.enableRefer = document.getElementById('enableRefer').checked;
       adminConfig.enableWithdraw = document.getElementById('enableWithdraw').checked;
       adminConfig.forceChannelJoin = document.getElementById('forceChannelJoin').checked;
-      saveConfig();
+      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
     };
 
     function renderTasks() {
@@ -1298,7 +1318,7 @@
     }
     window.addNewTask = function() {
       adminConfig.tasks.push({ title: "", reward: 0, link: "", image: "", limit: 0, instruction: "" });
-      saveConfig();
+      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
       renderTasks();
       // নতুন যোগ হওয়া টাস্কের কার্ডে স্ক্রল করে নিয়ে যায়
       setTimeout(() => {
@@ -1311,7 +1331,7 @@
       const t = adminConfig.tasks[i];
       if (!confirm(`আপনি কি নিশ্চিত Task ${i+1} (${t.title || 'নাম নেই'}) ডিলিট করতে চান?`)) return;
       adminConfig.tasks.splice(i, 1);
-      saveConfig();
+      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
       renderTasks();
     };
     window.updateSingleTask = function(i) {
@@ -1322,7 +1342,7 @@
       t.image = document.getElementById(`taskImage_${i}`).value.trim();
       t.limit = parseInt(document.getElementById(`taskLimit_${i}`).value, 10) || 0;
       t.instruction = document.getElementById(`taskInstruction_${i}`).value.trim();
-      saveConfig();
+      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
       renderTasks();
     };
     window.updateTasks = function() {
@@ -1334,7 +1354,7 @@
         t.limit = parseInt(document.getElementById(`taskLimit_${i}`).value, 10) || 0;
         t.instruction = document.getElementById(`taskInstruction_${i}`).value.trim();
       });
-      saveConfig();
+      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
       renderTasks();
     };
 
@@ -1382,32 +1402,42 @@
     }
     window.toggleAdSlotEnabled = function(slotNumber, isChecked) {
       adminConfig['adSlot' + slotNumber + 'Enabled'] = !!isChecked;
-      saveConfig();
       renderAdSlots();
-      showToast(`Ad Slot ${slotNumber} এখন ইউজার প্যানেলে ${isChecked ? 'চালু' : 'বন্ধ'} করা হয়েছে`);
+      // আগে এখানে saveConfig() কল করার সাথে সাথেই (Firebase রেজাল্টের অপেক্ষা না করে) এই
+      // টোস্টটা দেখানো হতো — মানে Firebase রাইট ব্যর্থ হলেও (PERMISSION_DENIED) এডমিন
+      // ভুল করে ভাবতেন স্লট টগল সফল হয়েছে। এখন saveConfig() থেকে আসা Promise-এর
+      // আসল রেজাল্ট (সফল/ব্যর্থ) অনুযায়ী মেসেজ দেখানো হচ্ছে।
+      saveConfig()
+        .then(() => {
+          showToast(`Ad Slot ${slotNumber} এখন ইউজার প্যানেলে ${isChecked ? 'চালু' : 'বন্ধ'} করা হয়েছে`);
+        })
+        .catch(() => {
+          // ব্যর্থ হলে saveConfig() নিজেই আসল এরর টোস্ট দেখিয়ে দিয়েছে, তাই এখানে আলাদা করে
+          // "সফল হয়েছে" মেসেজ দেখানো হচ্ছে না।
+        });
     };
     window.updateAdSlotReward = function(slotNumber, value) {
       const reward = parseFloat(value) || 0;
       adminConfig['adSlot' + slotNumber + 'Reward'] = reward;
-      saveConfig();
+      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
     };
     window.updateAdSlotCooldown = function(slotNumber, value) {
       let hours = parseFloat(value);
       if (isNaN(hours) || hours < 0) hours = 0;
       adminConfig['adSlot' + slotNumber + 'CooldownHours'] = hours;
-      saveConfig();
+      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
     };
     window.updateAdSlotDuration = function(slotNumber, value) {
       let seconds = parseInt(value);
       if (isNaN(seconds) || seconds < 1) seconds = 1;
       adminConfig['adSlot' + slotNumber + 'DurationSeconds'] = seconds;
-      saveConfig();
+      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
     };
     window.editAdLink = function(slotKey, index) {
       const newLink = prompt('নতুন লিংক দিন:', adminConfig[slotKey][index]);
       if (newLink !== null && newLink.trim() !== '') {
         adminConfig[slotKey][index] = newLink.trim();
-        saveConfig();
+        saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
         renderAdSlots();
       }
     };
