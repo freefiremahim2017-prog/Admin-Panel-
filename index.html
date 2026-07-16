@@ -611,10 +611,7 @@
       color: #ff8fb8 !important;
     }
 
-    /* ---- Telegram gate: shown only if the panel is opened outside Telegram
-       or by a Telegram ID that isn't in the admin allow-list. This is a
-       front-end convenience layer only — see chat notes on why the real
-       protection is Firebase Auth + Rules below. ---- */
+    /* ---- Telegram gate ---- */
     #tgDeniedScreen {
       display: none;
       position: fixed;
@@ -665,14 +662,14 @@
 
   <script>
     const firebaseConfig = {
-  apiKey: "AIzaSyCifxw05peGi9lAJxyH1tw8uBfWznNyuhI",
-  authDomain: "gotasks-ern.firebaseapp.com",
-  databaseURL: "https://gotasks-ern-default-rtdb.firebaseio.com",
-  projectId: "gotasks-ern",
-  storageBucket: "gotasks-ern.firebasestorage.app",
-  messagingSenderId: "457081461962",
-  appId: "1:457081461962:web:1b62e4b3a5003c6052a833"
-};
+      apiKey: "AIzaSyCifxw05peGi9lAJxyH1tw8uBfWznNyuhI",
+      authDomain: "gotasks-ern.firebaseapp.com",
+      databaseURL: "https://gotasks-ern-default-rtdb.firebaseio.com",
+      projectId: "gotasks-ern",
+      storageBucket: "gotasks-ern.firebasestorage.app",
+      messagingSenderId: "457081461962",
+      appId: "1:457081461962:web:1b62e4b3a5003c6052a833"
+    };
 
     // Initialize Firebase
     if (!firebase.apps.length) {
@@ -680,17 +677,9 @@
     }
     console.log("Firebase Connected Successfully in Admin Panel!");
   </script>
-  </head>
+</head>
 <body class="locked">
 
-<!-- ====================== TELEGRAM ID GATE ======================
-     Runs before anything else renders. If the panel isn't opened inside
-     Telegram, or the Telegram user id isn't in the allow-list, everything
-     else on the page is hidden and this message is shown instead.
-     NOTE: this is a front-end convenience check only. Anyone with dev
-     tools can edit/remove client-side JS, so it must NOT be relied on as
-     the real access control — that job belongs to Firebase Auth + Rules
-     (already wired up below via email/password sign-in). -->
 <div id="tgDeniedScreen">
   <i class="fa-solid fa-ban"></i>
   <h2>Access Denied!</h2>
@@ -709,8 +698,6 @@
     try {
       var tg = window.Telegram && window.Telegram.WebApp;
       if (!tg || !tg.initDataUnsafe || !tg.initDataUnsafe.user) {
-        // Not opened as a Telegram Mini App at all (e.g. pasted straight
-        // into Chrome) — block.
         denyAccess();
         return;
       }
@@ -719,7 +706,6 @@
         denyAccess();
         return;
       }
-      // Allowed: proceed to normal Firebase Auth login flow below.
       tg.ready();
       tg.expand();
     } catch (e) {
@@ -776,7 +762,7 @@
 
 <aside class="sidebar">
   <div class="sidebar-logo">
-    <i class="fa-solid fa-shield-haltered"></i> <span>Admin</span>
+    <i class="fa-solid fa-shield-halved"></i> <span>Admin</span>
   </div>
   <ul class="nav-menu">
     <li><a href="#" class="active" data-section="general"><i class="fa-solid fa-gear"></i> <span>General</span></a></li>
@@ -811,13 +797,9 @@
 
 <div class="toast-admin" id="adminToast">✅ Saved successfully</div>
 
-<!-- Firebase already initialized once at the top of <head>; no need to re-init here. -->
-
 <script>
   (function() {
     const adminConfig = {
-      // adminEmail এখন শুধু প্রদর্শনের জন্য — Firebase Auth লগইনের সময় currentUser.email থেকে
-      // অটো-আপডেট হয়। পাসওয়ার্ড আর কোথাও প্লেইনটেক্সটে সেভ হয় না (Firebase Auth নিজেই সামলায়)।
       adminEmail: "admin@mahim.com",
       appName: "Mahim",
       appTagline: "Earn by tasks & ads",
@@ -869,7 +851,6 @@
       adSlot2DurationSeconds: 15,
       adSlot3DurationSeconds: 15,
       adSlot4DurationSeconds: 15,
-      // Slot 3, 4 ডিফল্ট বন্ধ (ইউজার প্যানেলে দেখাবে না) — Ad Slots পেজ থেকে টগল অন করলেই চালু হবে
       adSlot1Enabled: true,
       adSlot2Enabled: true,
       adSlot3Enabled: false,
@@ -880,18 +861,10 @@
       telegramBotAppUrl: "https://t.me/Go_tasks_ern_bot/app"
     };
 
-    // ---- Users & withdraw requests (populated from real user activity / localStorage) ----
     let users = [];
-
     let withdrawRequests = [];
-
     let currentFilter = "pending";
 
-    // ---------- FIREBASE REAL-TIME SYNC ----------
-    // এখানেও localStorage শুধু নিজের ডিভাইসের cache — Firebase Realtime Database হলো আসল/মাস্টার ডেটা।
-    // এডমিন লগইন ক্রেডেনশিয়াল এখন সম্পূর্ণ Firebase Authentication সামলায় (কোথাও প্লেইনটেক্সটে
-    // সেভ হয় না)। বাকি সব সাধারণ কনফিগ (appName, tasks, ad links ইত্যাদি) থাকে mahimAdminConfig
-    // নোডে, যেটা ইউজার অ্যাপ (index.html) পড়ে।
     function fb() {
       try {
         if (typeof firebase === 'undefined' || !firebase.apps || !firebase.apps.length) return null;
@@ -911,10 +884,8 @@
       const db = fb();
       if (!db) return;
       try {
-        // adminEmail/password আর mahimAdminAuth নোডে সেভ হয় না — Firebase Authentication নিজেই
-        // ক্রেডেনশিয়াল সামলায়, তাই ডেটাবেসে কোথাও প্লেইনটেক্সট পাসওয়ার্ড থাকে না।
         db.ref('mahimAdminConfig').set(splitAdminConfigForPublish(adminConfig))
-          .catch(err => console.warn('Firebase config sync failed (check database rules)', err));
+          .catch(err => console.warn('Firebase config sync failed', err));
       } catch (e) {
         console.warn('Firebase config sync failed', e);
       }
@@ -966,29 +937,14 @@
 
       const db = fb();
       if (!db) {
-        showToast('⚠️ Firebase কানেক্ট নেই — এই ডিভাইসে সেভ হয়েছে কিন্তু লাইভ অ্যাপে যায়নি');
-        return Promise.resolve(false); // এখানেও একটা Promise রিটার্ন করা হচ্ছে, যাতে কলার .then()/await করতে পারে
+        showToast('⚠️ Firebase কানেক্ট নেই — এই ডিভাইসে সেভ হয়েছে');
+        return Promise.resolve(false); 
       }
 
-      // আগে এখানে .catch() শুধু console.warn করত আর নিচে সবসময় "✅ সেভ হয়েছে" টোস্ট
-      // দেখানো হতো — মানে Firebase Rules ব্লক করলেও (permission-denied) এডমিন কখনো
-      // বুঝতেই পারতেন না যে আসল ডেটাবেসে কিছুই সেভ হয়নি। এখন রিয়েল রেজাল্ট দেখানো হচ্ছে,
-      // এবং পুরো Promise-টা রিটার্ন করা হচ্ছে যাতে কোনো কলার সত্যিকারের রেজাল্ট না জেনে
-      // নিজে থেকে আগেভাগে "সফল" টোস্ট দেখাতে না পারে।
       const payload = splitAdminConfigForPublish(adminConfig);
       return db.ref('mahimAdminConfig').set(payload)
         .then(() => {
-          // শুধু .set() প্রমিজ resolve হওয়া যথেষ্ট নয় — সেটা লোকাল SDK ক্যাশ থেকেও resolve
-          // হতে পারে। তাই সাথে সাথেই আবার সার্ভার থেকে ফ্রেশ রিড করে নিশ্চিত করা হচ্ছে যে
-          // ডেটা সত্যিই persist হয়েছে, নাহলে এডমিন ভুলভাবে "✅ সফল" দেখেও পরে দেখবেন ডেটা নেই।
           return db.ref('mahimAdminConfig').once('value').then(snap => {
-            const stored = snap.val() || {};
-            const mismatchKey = Object.keys(payload).find(k => JSON.stringify(stored[k]) !== JSON.stringify(payload[k]));
-            if (mismatchKey) {
-              console.error('⚠️ সেভ যাচাই ব্যর্থ — পাঠানো ও সংরক্ষিত ডেটা মিলছে না, key:', mismatchKey, {sent: payload[mismatchKey], stored: stored[mismatchKey]});
-              showToast('⚠️ সেভ হয়েছে বলে দেখালেও ডেটাবেসে পুরোপুরি টেকেনি (key: ' + mismatchKey + ') — Firebase Rules/Validation চেক করুন');
-              throw new Error('SAVE_VERIFY_MISMATCH:' + mismatchKey);
-            }
             showToast('সমস্ত সেটিংস সংরক্ষণ করা হয়েছে ✅');
             syncUsersToFirebase(users);
             syncWithdrawsToFirebase(withdrawRequests);
@@ -996,11 +952,9 @@
           });
         })
         .catch(err => {
-          if (!String(err && err.message).startsWith('SAVE_VERIFY_MISMATCH')) {
-            console.error('❌ Firebase config সেভ ব্যর্থ (Realtime Database Rules চেক করুন):', err);
-            showToast('❌ সেভ ব্যর্থ হয়েছে: ' + (err && err.code ? err.code : 'PERMISSION_DENIED — Firebase Rules চেক করুন'));
-          }
-          throw err; // কলারকে জানানো হচ্ছে যে সেভ আসলে ব্যর্থ হয়েছে
+          console.error('❌ Firebase config সেভ ব্যর্থ:', err);
+          showToast('❌ সেভ ব্যর্থ হয়েছে!');
+          throw err; 
         });
     }
 
@@ -1013,16 +967,10 @@
       if (savedW) withdrawRequests = JSON.parse(savedW);
     }
 
-    // ---------- FIREBASE হাইড্রেশন + রিয়েল-টাইম listener ----------
-    // এডমিন প্যানেল খোলার সাথে সাথে Firebase (আসল/মাস্টার ডেটা) থেকে সবশেষ config/users/withdraws/
-    // submissions টেনে আনে, এবং প্রতিটা নোডে রিয়েল-টাইম listener বসায় — যাতে ইউজার অ্যাপে (যেকোনো
-    // ফোনে) কিছু ঘটলেই (নতুন ইউজার, নতুন withdraw request, নতুন স্ক্রিনশট) এই এডমিন প্যানেলে
-    // রিলোড ছাড়াই সাথে সাথে দেখা যায়।
     function hydrateAndListenFirebase() {
       const db = fb();
       if (!db) return;
 
-      // লগইনের পর currentUser থেকে ইমেইল আপডেট (শুধু প্রদর্শনের জন্য)
       if (firebase.auth().currentUser) adminConfig.adminEmail = firebase.auth().currentUser.email;
 
       Promise.all([
@@ -1044,7 +992,7 @@
         if (currentSection) renderSection(currentSection);
         updatePendingBadge();
       }).catch(err => {
-        console.warn('Admin panel: initial Firebase hydrate failed, using local cache', err);
+        console.warn('Admin panel: initial Firebase hydrate failed', err);
       }).finally(() => {
         attachAdminRealtimeListeners();
       });
@@ -1054,10 +1002,6 @@
     function attachAdminRealtimeListeners() {
       const db = fb();
       if (!db) return;
-      // এই ফাংশন একাধিকবার কল হলে (যেমন onAuthStateChanged একাধিকবার ফায়ার করলে)
-      // আগে থেকেই একাধিক .on('value') listener জমে যেত, ফলে একটাই আপডেট বারবার
-      // প্রসেস হতো (ডুপ্লিকেট টোস্ট/রিরেন্ডার)। তাই দ্বিতীয়বার আর নতুন করে listener
-      // বসানো হচ্ছে না।
       if (adminRealtimeListenersAttached) return;
       adminRealtimeListenersAttached = true;
 
@@ -1086,8 +1030,6 @@
         const val = snap.val() || {};
         const newList = Object.keys(val).map(id => Object.assign({}, val[id], { id: id }));
         const oldPending = getSubmissions().filter(s => s.status === 'pending').length;
-        // শুধু localStorage আপডেট করা হচ্ছে (saveSubmissions() নয়), যাতে Firebase থেকে পাওয়া ডেটা
-        // আবার Firebase-এই push করে অপ্রয়োজনীয় রাউন্ড-ট্রিপ তৈরি না হয়
         localStorage.setItem('mahim_task_submissions', JSON.stringify(newList));
         const newPending = newList.filter(s => s.status === 'pending').length;
         if (newPending > oldPending) {
@@ -1098,7 +1040,6 @@
         if (currentSection === 'submissions') renderSubmissions();
       });
 
-      // এডমিন কনফিগ অন্য কোনো ডিভাইস থেকে বদলালে এখানেও রিফ্লেক্ট হবে (adminEmail/password ছাড়া)
       db.ref('mahimAdminConfig').on('value', snap => {
         if (!snap.exists()) return;
         Object.assign(adminConfig, snap.val());
@@ -1140,7 +1081,7 @@
       dynamicContent.innerHTML = `
         <div class="card">
           <div class="section-header"><h3>🔐 Admin Login</h3></div>
-          <p style="color:var(--muted); font-size:0.9rem; margin-bottom:10px;">লগইন ইমেইল/পাসওয়ার্ড এখন Firebase Authentication দিয়ে সুরক্ষিত — এখানে প্লেইনটেক্সটে সেভ হয় না।</p>
+          <p style="color:var(--muted); font-size:0.9rem; margin-bottom:10px;">লগইন ইমেইল/পাসওয়ার্ড এখন Firebase Authentication দিয়ে সুরক্ষিত।</p>
           <div class="form-grid">
             <div class="form-group"><label>বর্তমান লগইন ইমেইল</label><input type="email" class="form-control" id="adminEmail" value="${adminConfig.adminEmail}" disabled></div>
           </div>
@@ -1173,7 +1114,7 @@
       adminConfig.withdrawFeePercent = parseFloat(document.getElementById('withdrawFeePercent').value) || 0;
       adminConfig.referralBonus = parseFloat(document.getElementById('referralBonus').value) || 0;
       adminConfig.telegramBotAppUrl = document.getElementById('telegramBotAppUrl').value.trim() || 'https://t.me/Go_tasks_ern_bot/app';
-      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+      saveConfig().catch(e => console.error(e)); 
     };
 
     function renderAppearance() {
@@ -1196,7 +1137,7 @@
       adminConfig.secondaryColor = document.getElementById('secondaryColor').value;
       adminConfig.logoUrl = document.getElementById('logoUrl').value;
       adminConfig.faviconUrl = document.getElementById('faviconUrl').value;
-      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+      saveConfig().catch(e => console.error(e)); 
     };
 
     function renderLinks() {
@@ -1221,7 +1162,7 @@
       adminConfig.telegramChannel3 = document.getElementById('tg3').value;
       adminConfig.youtubeLink = document.getElementById('yt').value;
       adminConfig.facebookLink = document.getElementById('fb').value;
-      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+      saveConfig().catch(e => console.error(e)); 
     };
 
     function renderImages() {
@@ -1243,7 +1184,7 @@
       adminConfig.bannerImage = document.getElementById('banner').value;
       adminConfig.taskIcon1 = document.getElementById('taskIcon1').value;
       adminConfig.taskIcon2 = document.getElementById('taskIcon2').value;
-      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+      saveConfig().catch(e => console.error(e)); 
     };
 
     function renderFeatures() {
@@ -1269,7 +1210,7 @@
       adminConfig.enableRefer = document.getElementById('enableRefer').checked;
       adminConfig.enableWithdraw = document.getElementById('enableWithdraw').checked;
       adminConfig.forceChannelJoin = document.getElementById('forceChannelJoin').checked;
-      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+      saveConfig().catch(e => console.error(e)); 
     };
 
     function renderTasks() {
@@ -1333,9 +1274,8 @@
     }
     window.addNewTask = function() {
       adminConfig.tasks.push({ title: "", reward: 0, link: "", image: "", limit: 0, instruction: "" });
-      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+      saveConfig().catch(e => console.error(e)); 
       renderTasks();
-      // নতুন যোগ হওয়া টাস্কের কার্ডে স্ক্রল করে নিয়ে যায়
       setTimeout(() => {
         const cards = document.querySelectorAll('#dynamicContent .card');
         const last = cards[cards.length - 1];
@@ -1346,7 +1286,7 @@
       const t = adminConfig.tasks[i];
       if (!confirm(`আপনি কি নিশ্চিত Task ${i+1} (${t.title || 'নাম নেই'}) ডিলিট করতে চান?`)) return;
       adminConfig.tasks.splice(i, 1);
-      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+      saveConfig().catch(e => console.error(e)); 
       renderTasks();
     };
     window.updateSingleTask = function(i) {
@@ -1357,7 +1297,7 @@
       t.image = document.getElementById(`taskImage_${i}`).value.trim();
       t.limit = parseInt(document.getElementById(`taskLimit_${i}`).value, 10) || 0;
       t.instruction = document.getElementById(`taskInstruction_${i}`).value.trim();
-      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+      saveConfig().catch(e => console.error(e)); 
       renderTasks();
     };
     window.updateTasks = function() {
@@ -1369,7 +1309,7 @@
         t.limit = parseInt(document.getElementById(`taskLimit_${i}`).value, 10) || 0;
         t.instruction = document.getElementById(`taskInstruction_${i}`).value.trim();
       });
-      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+      saveConfig().catch(e => console.error(e)); 
       renderTasks();
     };
 
@@ -1418,46 +1358,38 @@
     window.toggleAdSlotEnabled = function(slotNumber, isChecked) {
       adminConfig['adSlot' + slotNumber + 'Enabled'] = !!isChecked;
       renderAdSlots();
-      // আগে এখানে saveConfig() কল করার সাথে সাথেই (Firebase রেজাল্টের অপেক্ষা না করে) এই
-      // টোস্টটা দেখানো হতো — মানে Firebase রাইট ব্যর্থ হলেও (PERMISSION_DENIED) এডমিন
-      // ভুল করে ভাবতেন স্লট টগল সফল হয়েছে। এখন saveConfig() থেকে আসা Promise-এর
-      // আসল রেজাল্ট (সফল/ব্যর্থ) অনুযায়ী মেসেজ দেখানো হচ্ছে।
       saveConfig()
         .then(() => {
           showToast(`Ad Slot ${slotNumber} এখন ইউজার প্যানেলে ${isChecked ? 'চালু' : 'বন্ধ'} করা হয়েছে`);
         })
-        .catch(() => {
-          // ব্যর্থ হলে saveConfig() নিজেই আসল এরর টোস্ট দেখিয়ে দিয়েছে, তাই এখানে আলাদা করে
-          // "সফল হয়েছে" মেসেজ দেখানো হচ্ছে না।
-        });
+        .catch(e => console.error(e));
     };
     window.updateAdSlotReward = function(slotNumber, value) {
       const reward = parseFloat(value) || 0;
       adminConfig['adSlot' + slotNumber + 'Reward'] = reward;
-      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+      saveConfig().catch(e => console.error(e)); 
     };
     window.updateAdSlotCooldown = function(slotNumber, value) {
       let hours = parseFloat(value);
       if (isNaN(hours) || hours < 0) hours = 0;
       adminConfig['adSlot' + slotNumber + 'CooldownHours'] = hours;
-      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+      saveConfig().catch(e => console.error(e)); 
     };
     window.updateAdSlotDuration = function(slotNumber, value) {
       let seconds = parseInt(value);
       if (isNaN(seconds) || seconds < 1) seconds = 1;
       adminConfig['adSlot' + slotNumber + 'DurationSeconds'] = seconds;
-      saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+      saveConfig().catch(e => console.error(e)); 
     };
     window.editAdLink = function(slotKey, index) {
       const newLink = prompt('নতুন লিংক দিন:', adminConfig[slotKey][index]);
       if (newLink !== null && newLink.trim() !== '') {
         adminConfig[slotKey][index] = newLink.trim();
-        saveConfig().catch(() => {}); // এরর টোস্ট saveConfig() নিজেই দেখিয়ে দেয়, শুধু unhandled rejection আটকানো হচ্ছে
+        saveConfig().catch(e => console.error(e)); 
         renderAdSlots();
       }
     };
 
-    // ====================== WITHDRAW REQUESTS ======================
     function updatePendingBadge() {
       const pendingCount = withdrawRequests.filter(r => r.status === 'pending').length;
       const badge = document.getElementById('pendingBadge');
@@ -1486,7 +1418,10 @@
       const sorted = [...filtered].sort((a,b) => new Date(b.date) - new Date(a.date));
 
       const rowsHtml = sorted.length ? sorted.map(r => {
-        const initials = r.userName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+        const safeUserName = r.userName || 'Unknown User';
+        const safePhone = r.phone || 'No Phone';
+        const initials = safeUserName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+        
         const statusClass = r.status === 'pending' ? 'status-pending' : r.status === 'approved' ? 'status-approved' : 'status-rejected';
         const statusLabel = r.status === 'pending' ? 'পেন্ডিং' : r.status === 'approved' ? 'এপ্রুভড' : 'রিজেক্টেড';
         return `
@@ -1495,14 +1430,14 @@
               <div class="user-mini">
                 <div class="user-avatar">${initials}</div>
                 <div>
-                  <div style="font-weight:600;">${r.userName}</div>
-                  <div style="font-size:0.78rem;color:var(--muted);">${r.phone}</div>
+                  <div style="font-weight:600;">${safeUserName}</div>
+                  <div style="font-size:0.78rem;color:var(--muted);">${safePhone}</div>
                 </div>
               </div>
             </td>
-            <td style="font-weight:700;color:var(--primary);">${r.amount} ${adminConfig.currency}</td>
-            <td>${r.method}<br><span style="font-size:0.78rem;color:var(--muted);">${r.number}</span></td>
-            <td>${r.date}</td>
+            <td style="font-weight:700;color:var(--primary);">${r.amount || 0} ${adminConfig.currency}</td>
+            <td>${r.method || 'N/A'}<br><span style="font-size:0.78rem;color:var(--muted);">${r.number || 'N/A'}</span></td>
+            <td>${r.date || 'N/A'}</td>
             <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
             <td>
               <div class="action-btns">
@@ -1562,7 +1497,7 @@
           <div class="modal-row"><span>পরিমাণ</span><strong>${req.amount} ${adminConfig.currency}</strong></div>
           <div class="modal-row"><span>মেথড</span><strong>${req.method} - ${req.number}</strong></div>
           <div class="modal-row"><span>ইউজারের ব্যালেন্স</span><strong>${user ? user.balance : 'N/A'} ${adminConfig.currency}</strong></div>
-          <p style="font-size:0.85rem;color:var(--muted);margin-top:12px;">এপ্রুভ করলে এই পরিমাণ টাকা ইউজারকে পাঠানো হয়েছে বলে গণ্য হবে এবং তার ব্যালেন্স থেকে কেটে নেওয়া হবে।</p>
+          <p style="font-size:0.85rem;color:var(--muted);margin-top:12px;">এপ্রুভ করলে এই পরিমাণ টাকা ইউজারকে পাঠানো হয়েছে বলে গণ্য হবে। (টাকা রিকোয়েস্ট করার সময়ই কাটা হয়েছে)</p>
           <div class="modal-actions">
             <button class="btn btn-outline" onclick="closeModal()">বাতিল</button>
             <button class="btn btn-success" onclick="confirmDecision('${reqId}','approved')">নিশ্চিত এপ্রুভ</button>
@@ -1577,7 +1512,7 @@
             <label>রিজেক্ট করার কারণ</label>
             <textarea class="form-control" id="rejectReason" placeholder="যেমন: ভুল নাম্বার, সন্দেহজনক একাউন্ট ইত্যাদি"></textarea>
           </div>
-          <p style="font-size:0.85rem;color:var(--muted);margin-top:8px;">রিজেক্ট করলে ইউজারের ব্যালেন্সে কোনো পরিবর্তন হবে না, কারণ টাকা শুধু এপ্রুভ করলেই কাটা হয়।</p>
+          <p style="font-size:0.85rem;color:var(--muted);margin-top:8px;">রিজেক্ট করলে ইউজারের রিকোয়েস্ট করা ${req.amount} ${adminConfig.currency} আবার তার ব্যালেন্সে রিফান্ড হয়ে যাবে।</p>
           <div class="modal-actions">
             <button class="btn btn-outline" onclick="closeModal()">বাতিল</button>
             <button class="btn btn-danger" onclick="confirmDecision('${reqId}','rejected')">নিশ্চিত রিজেক্ট</button>
@@ -1594,17 +1529,23 @@
       if (decision === 'rejected') {
         const reasonEl = document.getElementById('rejectReason');
         req.reason = reasonEl ? reasonEl.value.trim() : '';
-        // টাকা এপ্রুভ না হওয়া পর্যন্ত ব্যালেন্স থেকে কাটা হয় না, তাই রিজেক্ট করলে ব্যালেন্সে কিছু ফেরত দেওয়ার দরকার নেই।
-      } else {
-        // গুরুত্বপূর্ণ: ইউজার যখন উইথড্র রিকোয়েস্ট সাবমিট করে (মূল অ্যাপ থেকে), তখনই তার ব্যালেন্স
-        // থেকে টাকা কেটে নেওয়া হয় এবং totalWithdrawn বাড়ানো হয় (যাতে একই টাকা দুইবার তোলা না যায়)।
-        // তাই এখানে এপ্রুভ করার সময় আবার ব্যালেন্স চেক/কাটা করলে সেটা ডাবল-ডিডাকশন হয়ে যায় এবং
-        // ব্যালেন্স কম দেখিয়ে এপ্রুভ আটকে যায়। এপ্রুভ করার সময় শুধু স্ট্যাটাস পরিবর্তন করাই যথেষ্ট।
+        
+        // রিফান্ড লজিক: রিজেক্ট করলে ইউজারের ব্যালেন্সে টাকা ফেরত যাবে
+        const db = fb();
+        if (db) {
+          db.ref('mahimUsers/' + req.userId + '/balance').transaction(current => (current || 0) + (req.amount || 0));
+        } else {
+          const user = findUser(req.userId);
+          if (user) {
+            user.balance = (user.balance || 0) + (req.amount || 0);
+          }
+        }
       }
+      
       req.status = decision;
       persistUsersAndWithdraws();
       closeModal();
-      showToast(decision === 'approved' ? '✅ উইথড্র এপ্রুভ করা হয়েছে' : '❌ উইথড্র রিজেক্ট করা হয়েছে');
+      showToast(decision === 'approved' ? '✅ উইথড্র এপ্রুভ করা হয়েছে' : '❌ উইথড্র রিজেক্ট করা হয়েছে (টাকা ফেরত দেওয়া হয়েছে)');
       renderWithdraw();
     };
 
@@ -1612,32 +1553,34 @@
       document.getElementById('reqModal').classList.remove('show');
     };
 
-    // ====================== USERS & BALANCE ======================
     function renderUsers() {
       pageTitle.textContent = '👥 Users & Balance';
       const totalBalance = users.reduce((s,u)=>s+u.balance,0);
       const totalUsers = users.length;
 
       const rows = users.map(u => {
-        const initials = u.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+        const safeName = u.name || 'Unknown User'; 
+        const safePhone = u.phone || 'No Phone';
+        const initials = safeName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+        
         return `
           <tr>
             <td>
               <div class="user-mini">
                 <div class="user-avatar">${initials}</div>
                 <div>
-                  <div style="font-weight:600;">${u.name}</div>
-                  <div style="font-size:0.78rem;color:var(--muted);">${u.phone}</div>
+                  <div style="font-weight:600;">${safeName}</div>
+                  <div style="font-size:0.78rem;color:var(--muted);">${safePhone}</div>
                 </div>
               </div>
             </td>
             <td>
               <div style="font-size:0.85rem;font-weight:600;">${u.id}</div>
             </td>
-            <td style="font-weight:700;color:var(--primary);">${u.balance} ${adminConfig.currency}</td>
-            <td>${u.totalEarned} ${adminConfig.currency}</td>
-            <td>${u.totalWithdrawn} ${adminConfig.currency}</td>
-            <td>${u.joined}</td>
+            <td style="font-weight:700;color:var(--primary);">${u.balance || 0} ${adminConfig.currency}</td>
+            <td>${u.totalEarned || 0} ${adminConfig.currency}</td>
+            <td>${u.totalWithdrawn || 0} ${adminConfig.currency}</td>
+            <td>${u.joined || 'N/A'}</td>
             <td>
               <button class="btn btn-outline btn-sm" onclick="viewUserHistory('${u.id}')"><i class="fa-solid fa-eye"></i> হিস্ট্রি</button>
               <button class="btn btn-primary btn-sm" onclick="addUserBalance('${u.id}')"><i class="fa-solid fa-plus"></i> ব্যালেন্স যোগ</button>
@@ -1664,13 +1607,6 @@
       `;
     }
 
-    // NOTE (security): balance/totalEarned এখন আর local array এডিট করে
-    // persistUsersAndWithdraws() দিয়ে পুরো user object ওভাররাইট করা হয় না।
-    // বরং Firebase-এর নিজস্ব transaction() ব্যবহার করে সরাসরি
-    // mahimUsers/{uid}/balance পাথে আপডেট পাঠানো হয় — এতে করে দুইটা এডমিন
-    // ট্যাব/ডিভাইস থেকে একসাথে balance পরিবর্তন করলেও কোনো আপডেট হারিয়ে
-    // যায় না (lost update prevented), এবং Firebase Rules (balance ফিল্ড
-    // শুধু isAdmin() লিখতে পারবে) এখানে সরাসরি এনফোর্স হয়।
     window.addUserBalance = function(userId) {
       const user = findUser(userId);
       if (!user) return;
@@ -1708,12 +1644,9 @@
       const db = fb();
       if (!db) { alert('Firebase কানেক্ট নেই, চেষ্টা আবার করুন'); return; }
       const userRef = db.ref('mahimUsers/' + userId);
-      // transaction-এর ভেতরেই current balance চেক করা হচ্ছে, যাতে prompt
-      // দেখানোর পর ও সাবমিট করার মাঝে ব্যালেন্স বদলে গেলেও (রেসকন্ডিশন)
-      // ভুলভাবে নেগেটিভ ব্যালেন্স না হয়।
       userRef.child('balance').transaction(current => {
         const currentBalance = current || 0;
-        if (amount > currentBalance) return; // abort transaction
+        if (amount > currentBalance) return; 
         return currentBalance - amount;
       }).then(result => {
         if (!result.committed) {
@@ -1761,7 +1694,6 @@
       setTimeout(() => toast.classList.remove('show'), 2500);
     }
 
-    // ====================== TASK SCREENSHOT SUBMISSIONS ======================
     function getSubmissions() {
       try {
         return JSON.parse(localStorage.getItem('mahim_task_submissions') || '[]');
@@ -1788,8 +1720,6 @@
       }
     }
 
-    // Live-check for newly submitted user screenshots so the admin is notified
-    // immediately (badge + toast) without needing to manually refresh/reload.
     let lastKnownPendingCount = 0;
     function checkForNewScreenshotSubmissions() {
       const pendingCount = getSubmissions().filter(s => s.status === 'pending').length;
@@ -1866,11 +1796,9 @@
     };
 
     window.decideSubmission = function(subId, decision, btnEl) {
-      // ডবল-ক্লিক/ডবল-ট্যাপ করলে যাতে একই সাবমিশনের জন্য এই ফাংশন দুইবার না চলে,
-      // সাথে সাথেই বাটন দুটো ডিজেবল করে দেওয়া হচ্ছে।
       const actionsBox = btnEl ? btnEl.closest('.action-btns') : (subId ? document.getElementById('ssActions_' + subId) : null);
       if (actionsBox) {
-        if (actionsBox.dataset.processing === '1') return; // আগে থেকেই প্রসেস হচ্ছে
+        if (actionsBox.dataset.processing === '1') return; 
         actionsBox.dataset.processing = '1';
         actionsBox.querySelectorAll('button').forEach(b => b.disabled = true);
       }
@@ -1896,14 +1824,11 @@
 
       const db = fb();
 
-      // Firebase কানেক্টেড থাকলে সাবমিশনের নোডে একটা transaction চালানো হয়, যাতে
-      // দুইটা এডমিন ডিভাইস থেকে (বা একই ডিভাইসে বারবার) একসাথে "approve" চাপলেও
-      // রিওয়ার্ড ঠিক একবারই যোগ হয় — যেই আগে সার্ভারে পৌঁছায় শুধু সেই-ই সফল হবে।
       if (db) {
         db.ref('mahimTaskSubmissions/' + subId).transaction(currentVal => {
-          if (!currentVal) return currentVal; // সাবমিশন নেই, কিছু করার নেই
+          if (!currentVal) return currentVal; 
           if (currentVal.status === 'approved' && currentVal.rewardGranted) {
-            return; // আগেই এপ্রুভ ও রিওয়ার্ড দেওয়া হয়ে গেছে — abort, ডাবল পেমেন্ট আটকানো হলো
+            return; 
           }
           currentVal.status = 'approved';
           currentVal.rewardGranted = true;
@@ -1915,16 +1840,12 @@
           const localSub = submissions.find(s => s.id === subId);
 
           if (committed && sub) {
-            // এই কলটাই প্রথম যে transaction জিতেছে — একমাত্র এখানেই রিওয়ার্ড ব্যালেন্সে যোগ হবে
             let rewardAmount = Number(sub.reward || sub.taskReward || 0);
             if (!rewardAmount) {
               const matchedTask = adminConfig.tasks.find(t => t.title === sub.taskTitle);
               if (matchedTask) rewardAmount = Number(matchedTask.reward || 0);
             }
             if (rewardAmount > 0) {
-              // Firebase transaction দিয়ে সরাসরি balance/totalEarned আপডেট —
-              // local array এডিট করে persist করার বদলে, যাতে অন্য কোনো
-              // সমান্তরাল আপডেটের সাথে সংঘর্ষ (lost update) না হয়।
               const uref = db.ref('mahimUsers/' + sub.userId);
               uref.child('balance').transaction(cur => (cur || 0) + rewardAmount);
               uref.child('totalEarned').transaction(cur => (cur || 0) + rewardAmount);
@@ -1932,10 +1853,8 @@
             if (localSub) { localSub.status = 'approved'; localSub.rewardGranted = true; }
             saveSubmissions(submissions);
             finish('✅ স্ক্রিনশট এপ্রুভ করা হয়েছে এবং ইউজারের ব্যালেন্সে রিওয়ার্ড যোগ হয়েছে');
-            // ---- রেফারেল বোনাস (শুধু ইউজারের প্রথম এপ্রুভড টাস্কে, একবারই) ----
             grantReferralBonusIfEligible(sub.userId);
           } else {
-            // অন্য কোনো ডিভাইস/ক্লিক ইতিমধ্যে এটা এপ্রুভ করে ফেলেছে — এখানে আর কোনো রিওয়ার্ড দেওয়া হবে না
             if (localSub && sub) { localSub.status = sub.status; localSub.rewardGranted = sub.rewardGranted; }
             saveSubmissions(submissions);
             finish('ℹ️ এই স্ক্রিনশটটি ইতিমধ্যে প্রসেস হয়ে গেছে, নতুন করে রিওয়ার্ড দেওয়া হয়নি');
@@ -1947,16 +1866,10 @@
         return;
       }
 
-      // Firebase না থাকলে (অফলাইন/লোকাল টেস্টিং) শুধু rewardGranted ফ্ল্যাগ দিয়ে
-      // একই ডিভাইসে ডাবল-প্রসেসিং আটকানো হচ্ছে।
       const submissions = getSubmissions();
       const sub = submissions.find(s => s.id === subId);
       if (!sub) return finish('স্ক্রিনশট পাওয়া যায়নি');
 
-      // NOTE: এই ব্র্যাঞ্চ শুধু তখনই চলে যখন Firebase কানেক্ট নেই (fb() === null),
-      // অর্থাৎ পুরোপুরি লোকাল টেস্টিং মোড। প্রোডাকশনে (Firebase কানেক্টেড থাকলে)
-      // সবসময় উপরের transaction()-ভিত্তিক পাথ ব্যবহার হয়, যেখানে Security Rules
-      // এবং ডাবল-পেমেন্ট প্রোটেকশন সত্যিকারভাবে এনফোর্স হয়।
       if (!sub.rewardGranted) {
         let rewardAmount = Number(sub.reward || sub.taskReward || 0);
         if (!rewardAmount) {
@@ -1977,19 +1890,12 @@
       grantReferralBonusIfEligible(sub.userId);
     };
 
-    // ====================== রেফারেল বোনাস (ক্লাউড ফাংশন ছাড়া, এডমিন প্যানেল থেকেই) ======================
-    // ধরে নেওয়া হচ্ছে mahimUsers/{uid} নোডে এই ফিল্ডগুলো থাকবে (ইউজার সাইড অ্যাপে
-    // সাইনআপের সময় সেট করতে হবে):
-    //   referredBy          -> যে ইউজার তাকে রেফার করেছে তার uid (স্ট্রিং, একবারই সেট হয়)
-    //   referralBonusGranted-> বুলিয়ান, ডিফল্ট false — বোনাস একবার দেওয়া হয়ে গেলে true
-    // যদি আপনার ইউজার-সাইড কোডে ফিল্ডের নাম আলাদা হয় (referrerId, refBy ইত্যাদি),
-    // নিচের REFERRED_BY_FIELD / BONUS_GRANTED_FIELD কনস্ট্যান্ট দুটো বদলে দিন।
     const REFERRED_BY_FIELD = 'referredBy';
     const BONUS_GRANTED_FIELD = 'referralBonusGranted';
 
     function grantReferralBonusIfEligible(referredUserId) {
       const db = fb();
-      if (!db) return; // অফলাইন মোডে রেফারেল বোনাস স্কিপ করা হচ্ছে
+      if (!db) return; 
       const bonusAmount = Number(adminConfig.referralBonus || 0);
       if (bonusAmount <= 0) return;
 
@@ -1998,24 +1904,18 @@
         const u = snap.val();
         if (!u) return;
         const referrerId = u[REFERRED_BY_FIELD];
-        if (!referrerId) return; // এই ইউজারকে কেউ রেফার করেনি
+        if (!referrerId) return; 
 
-        // এই referred ইউজারের এটাই প্রথম এপ্রুভড টাস্ক কিনা যাচাই করা হচ্ছে —
-        // referral বোনাস শুধু একজন ইউজারের প্রথম টাস্ক এপ্রুভ হলে একবারই দেওয়া হয়।
         db.ref('mahimTaskSubmissions').orderByChild('userId').equalTo(referredUserId).once('value').then(subsSnap => {
           const subs = subsSnap.val() || {};
           const approvedCount = Object.values(subs).filter(s => s.status === 'approved').length;
-          if (approvedCount !== 1) return; // এটা প্রথম এপ্রুভড টাস্ক না হলে বোনাস দেওয়া হবে না
+          if (approvedCount !== 1) return; 
 
-          // ডাবল-পেমেন্ট প্রতিরোধ: referred ইউজারের নোডে transaction চালিয়ে
-          // BONUS_GRANTED_FIELD atomically true করা হচ্ছে। দুইটা এডমিন ট্যাব/ডিভাইস
-          // থেকে একইসাথে approve চাপলেও শুধু একজনই এই flag সেট করতে "জিতবে"।
           userRef.child(BONUS_GRANTED_FIELD).transaction(current => {
-            if (current === true) return; // আগেই বোনাস দেওয়া হয়ে গেছে — abort
+            if (current === true) return; 
             return true;
           }).then(result => {
-            if (!result.committed) return; // অন্য কোনো কল আগেই বোনাস দিয়ে দিয়েছে
-            // এখানেই একমাত্র বিজয়ী কল রেফারারের ব্যালেন্সে বোনাস যোগ করবে
+            if (!result.committed) return; 
             const referrerRef = db.ref('mahimUsers/' + referrerId);
             referrerRef.child('balance').transaction(cur => (cur || 0) + bonusAmount);
             referrerRef.child('totalEarned').transaction(cur => (cur || 0) + bonusAmount);
@@ -2050,7 +1950,6 @@
       if (e.target.id === 'reqModal') closeModal();
     });
 
-    // ====================== LOGIN / AUTH ======================
     window.togglePasswordView = function() {
       const pwd = document.getElementById('loginPassword');
       const icon = document.getElementById('toggleEyeIcon');
@@ -2080,8 +1979,6 @@
       errorBox.classList.remove('show');
       if (btn) { btn.disabled = true; btn.textContent = 'সাইন ইন হচ্ছে...'; }
 
-      // আসল Firebase Authentication দিয়ে লগইন যাচাই — এটাই একমাত্র জায়গা যেখানে
-      // ক্রেডেনশিয়াল যাচাই হয়, কোনো ক্লায়েন্ট-সাইড হার্ডকোডেড চেক নেই।
       firebase.auth().signInWithEmailAndPassword(email, password)
         .then(() => {
           errorBox.classList.remove('show');
@@ -2096,7 +1993,6 @@
         });
     };
 
-    // ====================== FORGOT PASSWORD (Firebase Auth রিয়েল ইমেইল রিসেট) ======================
     window.openForgotPasswordModal = function() {
       document.getElementById('fpEmailInput').value = '';
       document.getElementById('fpStep1Error').classList.remove('show');
@@ -2119,7 +2015,6 @@
       }
       errorBox.classList.remove('show');
 
-      // Firebase নিজেই আসল রিসেট লিংক-সহ ইমেইল পাঠায় — কোনো কোড এখানে ম্যানুয়ালি বানানো/যাচাই করা হয় না।
       firebase.auth().sendPasswordResetEmail(email)
         .then(() => {
           showToast('📧 রিসেট লিংক পাঠানো হয়েছে, ইমেইল চেক করুন');
@@ -2143,8 +2038,6 @@
       updatePendingBadge();
       updateSubmissionsBadge();
       lastKnownPendingCount = getSubmissions().filter(s => s.status === 'pending').length;
-      // এখন থেকে নতুন স্ক্রিনশট সাবমিশন Firebase realtime listener দিয়ে সাথে সাথেই ধরা পড়ে
-      // (attachAdminRealtimeListeners দেখুন), তাই আলাদা করে localStorage পোলিং করার আর দরকার নেই।
       hydrateAndListenFirebase();
     }
 
@@ -2160,8 +2053,6 @@
       if (e.key === 'Enter') attemptLogin();
     });
 
-    // Firebase Auth নিজেই সেশন পার্সিস্ট করে রাখে (localStorage/sessionStorage হাতে লাগে না)।
-    // পেজ লোড/রিফ্রেশ হলে এই লিসেনার অটোমেটিক্যালি লক/আনলক অবস্থা ঠিক করে দেয়।
     firebase.auth().onAuthStateChanged(function(user) {
       if (user) {
         unlockAdminPanel();
