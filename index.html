@@ -975,16 +975,31 @@
       // বুঝতেই পারতেন না যে আসল ডেটাবেসে কিছুই সেভ হয়নি। এখন রিয়েল রেজাল্ট দেখানো হচ্ছে,
       // এবং পুরো Promise-টা রিটার্ন করা হচ্ছে যাতে কোনো কলার সত্যিকারের রেজাল্ট না জেনে
       // নিজে থেকে আগেভাগে "সফল" টোস্ট দেখাতে না পারে।
-      return db.ref('mahimAdminConfig').set(splitAdminConfigForPublish(adminConfig))
+      const payload = splitAdminConfigForPublish(adminConfig);
+      return db.ref('mahimAdminConfig').set(payload)
         .then(() => {
-          showToast('সমস্ত সেটিংস সংরক্ষণ করা হয়েছে ✅');
-          syncUsersToFirebase(users);
-          syncWithdrawsToFirebase(withdrawRequests);
-          return true;
+          // শুধু .set() প্রমিজ resolve হওয়া যথেষ্ট নয় — সেটা লোকাল SDK ক্যাশ থেকেও resolve
+          // হতে পারে। তাই সাথে সাথেই আবার সার্ভার থেকে ফ্রেশ রিড করে নিশ্চিত করা হচ্ছে যে
+          // ডেটা সত্যিই persist হয়েছে, নাহলে এডমিন ভুলভাবে "✅ সফল" দেখেও পরে দেখবেন ডেটা নেই।
+          return db.ref('mahimAdminConfig').once('value').then(snap => {
+            const stored = snap.val() || {};
+            const mismatchKey = Object.keys(payload).find(k => JSON.stringify(stored[k]) !== JSON.stringify(payload[k]));
+            if (mismatchKey) {
+              console.error('⚠️ সেভ যাচাই ব্যর্থ — পাঠানো ও সংরক্ষিত ডেটা মিলছে না, key:', mismatchKey, {sent: payload[mismatchKey], stored: stored[mismatchKey]});
+              showToast('⚠️ সেভ হয়েছে বলে দেখালেও ডেটাবেসে পুরোপুরি টেকেনি (key: ' + mismatchKey + ') — Firebase Rules/Validation চেক করুন');
+              throw new Error('SAVE_VERIFY_MISMATCH:' + mismatchKey);
+            }
+            showToast('সমস্ত সেটিংস সংরক্ষণ করা হয়েছে ✅');
+            syncUsersToFirebase(users);
+            syncWithdrawsToFirebase(withdrawRequests);
+            return true;
+          });
         })
         .catch(err => {
-          console.error('❌ Firebase config সেভ ব্যর্থ (Realtime Database Rules চেক করুন):', err);
-          showToast('❌ সেভ ব্যর্থ হয়েছে: ' + (err && err.code ? err.code : 'PERMISSION_DENIED — Firebase Rules চেক করুন'));
+          if (!String(err && err.message).startsWith('SAVE_VERIFY_MISMATCH')) {
+            console.error('❌ Firebase config সেভ ব্যর্থ (Realtime Database Rules চেক করুন):', err);
+            showToast('❌ সেভ ব্যর্থ হয়েছে: ' + (err && err.code ? err.code : 'PERMISSION_DENIED — Firebase Rules চেক করুন'));
+          }
           throw err; // কলারকে জানানো হচ্ছে যে সেভ আসলে ব্যর্থ হয়েছে
         });
     }
