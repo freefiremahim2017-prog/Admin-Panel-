@@ -510,6 +510,17 @@
       color: var(--muted);
       margin-bottom: 8px;
     }
+    .ss-card-note {
+      font-size: 0.8rem;
+      color: var(--text);
+      background: #f7f8fa;
+      border-radius: 8px;
+      padding: 6px 8px;
+      margin-bottom: 8px;
+      max-height: 60px;
+      overflow-y: auto;
+      word-break: break-word;
+    }
     .ss-fullview-overlay {
       position: fixed;
       inset: 0;
@@ -521,6 +532,27 @@
       padding: 20px;
     }
     .ss-fullview-overlay.show { display: flex; }
+    .ss-fullview-inner {
+      max-width: 100%;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .ss-fullview-note {
+      display: none;
+      background: rgba(255,255,255,0.95);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      max-width: 480px;
+      max-height: 20vh;
+      overflow-y: auto;
+      word-break: break-word;
+    }
+    .ss-fullview-note.show { display: block; }
     .ss-fullview-overlay img {
       max-width: 100%;
       max-height: 85vh;
@@ -675,6 +707,13 @@
     if (!firebase.apps.length) {
       firebase.initializeApp(firebaseConfig);
     }
+
+    // SECURITY: login session persist na kore, tab/webview bondho hole
+    // shesh hoye jabe. Fole app abar khule login screen thakbei, purono
+    // session diye kauke email/password chhara dhuke jete debe na.
+    firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION)
+      .catch(function (e) { console.warn('Auth persistence set failed', e); });
+
     console.log("Firebase Connected Successfully in Admin Panel!");
   </script>
 </head>
@@ -725,12 +764,12 @@
     <div class="login-form">
       <div class="form-group">
         <label>Email</label>
-        <input type="email" class="form-control" id="loginEmail" placeholder="admin@mahim.com">
+        <input type="email" class="form-control" id="loginEmail" name="admin-login-email" placeholder="admin@mahim.com" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
       </div>
       <div class="form-group">
         <label>Password</label>
         <div class="password-wrap">
-          <input type="password" class="form-control" id="loginPassword" placeholder="••••••••">
+          <input type="password" class="form-control" id="loginPassword" name="admin-login-pass" placeholder="••••••••" autocomplete="off">
           <i class="fa-solid fa-eye toggle-eye" id="toggleEyeIcon" onclick="togglePasswordView()"></i>
         </div>
       </div>
@@ -770,6 +809,7 @@
     <li><a href="#" data-section="links"><i class="fa-solid fa-link"></i> <span>Links & URLs</span></a></li>
     <li><a href="#" data-section="images"><i class="fa-solid fa-images"></i> <span>Images & Media</span></a></li>
     <li><a href="#" data-section="features"><i class="fa-solid fa-sliders"></i> <span>Feature Toggle</span></a></li>
+    <li><a href="#" data-section="joingate"><i class="fa-brands fa-telegram"></i> <span>Channel Join Gate</span></a></li>
     <li><a href="#" data-section="tasks"><i class="fa-solid fa-list-check"></i> <span>Tasks Control</span></a></li>
     <li><a href="#" data-section="adslots"><i class="fa-solid fa-ad"></i> <span>Ad Slots (25 Links)</span></a></li>
     <li><a href="#" data-section="withdraw"><i class="fa-solid fa-money-bill-transfer"></i> <span>Withdraw Requests</span><span class="nav-badge" id="pendingBadge" style="display:none;">0</span></a></li>
@@ -792,7 +832,10 @@
 </div>
 
 <div class="ss-fullview-overlay" id="ssFullviewOverlay" onclick="closeSsFullview()">
-  <img id="ssFullviewImg" src="" alt="Screenshot">
+  <div class="ss-fullview-inner" onclick="event.stopPropagation()">
+    <img id="ssFullviewImg" src="" alt="Screenshot">
+    <div id="ssFullviewNote" class="ss-fullview-note"></div>
+  </div>
 </div>
 
 <div class="toast-admin" id="adminToast">✅ Saved successfully</div>
@@ -823,6 +866,11 @@
       enableRefer: true,
       enableWithdraw: true,
       forceChannelJoin: true,
+      forceJoinChannels: [
+        { name: "Official Channel", link: "https://t.me/mahim_bangla" },
+        { name: "Income Tips", link: "https://t.me/income_tips" },
+        { name: "Update Channel", link: "https://t.me/mahim_update" }
+      ],
       tasks: [
         { title: "Official Channel Join", reward: 1, link: "https://t.me/mahim_bangla", image: "" },
         { title: "Subscribe Youtube", reward: 10, link: "https://youtube.com/@mahim", image: "" },
@@ -878,6 +926,15 @@
       const clone = Object.assign({}, cfg);
       delete clone.adminEmail;
       return clone;
+    }
+
+    function normalizeJoinChannels() {
+      const list = adminConfig.forceJoinChannels;
+      if (!Array.isArray(list)) {
+        adminConfig.forceJoinChannels = (list && typeof list === 'object')
+          ? Object.keys(list).map(k => list[k]).filter(Boolean)
+          : [];
+      }
     }
 
     function syncConfigToFirebase() {
@@ -961,6 +1018,7 @@
     function loadConfig() {
       const saved = localStorage.getItem('mahim_admin_config');
       if (saved) Object.assign(adminConfig, JSON.parse(saved));
+      normalizeJoinChannels();
       const savedUsers = localStorage.getItem('mahim_users');
       if (savedUsers) users = JSON.parse(savedUsers);
       const savedW = localStorage.getItem('mahim_withdraws');
@@ -979,6 +1037,7 @@
         db.ref('mahimWithdraws').once('value').catch(() => null)
       ]).then(([configSnap, usersSnap, withdrawsSnap]) => {
         if (configSnap && configSnap.exists()) Object.assign(adminConfig, configSnap.val());
+        normalizeJoinChannels();
         if (usersSnap && usersSnap.exists()) {
           const val = usersSnap.val() || {};
           users = Object.keys(val).map(id => Object.assign({}, val[id], { id: id }));
@@ -1043,6 +1102,7 @@
       db.ref('mahimAdminConfig').on('value', snap => {
         if (!snap.exists()) return;
         Object.assign(adminConfig, snap.val());
+        normalizeJoinChannels();
         localStorage.setItem('mahim_admin_config', JSON.stringify(adminConfig));
       });
     }
@@ -1067,6 +1127,7 @@
         case 'links': renderLinks(); break;
         case 'images': renderImages(); break;
         case 'features': renderFeatures(); break;
+        case 'joingate': renderJoinGate(); break;
         case 'tasks': renderTasks(); break;
         case 'adslots': renderAdSlots(); break;
         case 'withdraw': renderWithdraw(); break;
@@ -1198,9 +1259,9 @@
             <div class="toggle-switch"><label class="switch"><input type="checkbox" id="enableTasks" ${c(adminConfig.enableTasks)}><span class="slider"></span></label> <strong>Task Center</strong></div>
             <div class="toggle-switch"><label class="switch"><input type="checkbox" id="enableRefer" ${c(adminConfig.enableRefer)}><span class="slider"></span></label> <strong>Refer System</strong></div>
             <div class="toggle-switch"><label class="switch"><input type="checkbox" id="enableWithdraw" ${c(adminConfig.enableWithdraw)}><span class="slider"></span></label> <strong>Withdraw</strong></div>
-            <div class="toggle-switch"><label class="switch"><input type="checkbox" id="forceChannelJoin" ${c(adminConfig.forceChannelJoin)}><span class="slider"></span></label> <strong>Force Channel Join</strong></div>
           </div>
           <button class="btn btn-primary" style="margin-top:20px;" onclick="updateFeatures()">Save Features</button>
+          <p style="font-size:0.8rem;color:var(--muted);margin-top:14px;">💡 Force Channel Join এখন থেকে সাইডবারের <strong>"Channel Join Gate"</strong> সেকশন থেকে পুরোপুরি নিয়ন্ত্রণ করা যাবে — কয়টা চ্যানেলে জয়েন করতে হবে তাও সেখান থেকেই ঠিক করা যাবে।</p>
         </div>
       `;
     }
@@ -1209,8 +1270,75 @@
       adminConfig.enableTasks = document.getElementById('enableTasks').checked;
       adminConfig.enableRefer = document.getElementById('enableRefer').checked;
       adminConfig.enableWithdraw = document.getElementById('enableWithdraw').checked;
-      adminConfig.forceChannelJoin = document.getElementById('forceChannelJoin').checked;
       saveConfig().catch(e => console.error(e)); 
+    };
+
+    function renderJoinGate() {
+      pageTitle.textContent = '📢 Channel Join Gate';
+      const c = (v) => v ? 'checked' : '';
+      normalizeJoinChannels();
+      const channels = adminConfig.forceJoinChannels;
+      const cardsHtml = channels.map((ch, i) => `
+        <div class="card" style="margin-bottom:16px;">
+          <div class="section-header">
+            <h3>চ্যানেল ${i+1}</h3>
+            <button class="btn btn-danger btn-sm" onclick="deleteJoinChannel(${i})" title="চ্যানেল ${i+1} ডিলিট করুন"><i class="fa-solid fa-trash"></i></button>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>চ্যানেলের নাম (ইউজারকে যা দেখানো হবে)</label>
+              <input class="form-control" id="joinChName_${i}" placeholder="যেমন: অফিসিয়াল চ্যানেল" value="${ch.name || ''}">
+            </div>
+            <div class="form-group">
+              <label>চ্যানেল লিংক</label>
+              <input class="form-control" id="joinChLink_${i}" placeholder="https://t.me/..." value="${ch.link || ''}">
+            </div>
+          </div>
+          <button class="btn btn-primary" style="margin-top:14px;" onclick="updateSingleJoinChannel(${i})"><i class="fa-solid fa-floppy-disk"></i> Save চ্যানেল ${i+1}</button>
+        </div>
+      `).join('');
+
+      dynamicContent.innerHTML = `
+        <div class="card" style="margin-bottom:16px;">
+          <div class="section-header"><h3>মাস্টার সেটিংস</h3></div>
+          <div class="toggle-switch"><label class="switch"><input type="checkbox" id="forceChannelJoinMaster" ${c(adminConfig.forceChannelJoin)}><span class="slider"></span></label> <strong>Force Channel Join চালু রাখুন</strong></div>
+          <p style="font-size:0.85rem;color:var(--muted);margin-top:10px;">এই টগল বন্ধ থাকলে ইউজারকে কোনো চ্যানেলে জয়েন করতে বলা হবে না। চালু থাকলে নিচে যতগুলো চ্যানেল যোগ করবেন, ইউজারকে <strong>সবগুলোতেই</strong> জয়েন করতে হবে — চ্যানেলের সংখ্যা সম্পূর্ণ আপনার নিয়ন্ত্রণে, ইচ্ছেমতো যোগ বা বাদ দিতে পারবেন।</p>
+          <button class="btn btn-primary" style="margin-top:10px;" onclick="updateJoinGateMaster()">Save</button>
+        </div>
+        ${cardsHtml || '<div class="card"><p style="color:var(--muted);">এখনো কোনো চ্যানেল যোগ করা হয়নি। নিচের বাটনে ক্লিক করে চ্যানেল যোগ করুন।</p></div>'}
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
+          <button class="btn" style="background:var(--success); color:#fff;" onclick="addJoinChannel()"><i class="fa-solid fa-plus"></i> নতুন চ্যানেল যোগ করুন (চ্যানেল ${channels.length+1})</button>
+        </div>
+      `;
+    }
+    window.updateJoinGateMaster = function() {
+      adminConfig.forceChannelJoin = document.getElementById('forceChannelJoinMaster').checked;
+      saveConfig().catch(e => console.error(e));
+    };
+    window.addJoinChannel = function() {
+      normalizeJoinChannels();
+      adminConfig.forceJoinChannels.push({ name: "", link: "" });
+      saveConfig().catch(e => console.error(e));
+      renderJoinGate();
+      setTimeout(() => {
+        const cards = document.querySelectorAll('#dynamicContent .card');
+        const last = cards[cards.length - 1];
+        if (last) last.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+    };
+    window.deleteJoinChannel = function(i) {
+      const ch = adminConfig.forceJoinChannels[i];
+      if (!confirm(`আপনি কি নিশ্চিত চ্যানেল ${i+1} (${ch.name || 'নাম নেই'}) ডিলিট করতে চান?`)) return;
+      adminConfig.forceJoinChannels.splice(i, 1);
+      saveConfig().catch(e => console.error(e));
+      renderJoinGate();
+    };
+    window.updateSingleJoinChannel = function(i) {
+      const ch = adminConfig.forceJoinChannels[i];
+      ch.name = document.getElementById(`joinChName_${i}`).value.trim();
+      ch.link = document.getElementById(`joinChLink_${i}`).value.trim();
+      saveConfig().catch(e => console.error(e));
+      renderJoinGate();
     };
 
     function renderTasks() {
@@ -1530,15 +1658,20 @@
         const reasonEl = document.getElementById('rejectReason');
         req.reason = reasonEl ? reasonEl.value.trim() : '';
         
-        // রিফান্ড লজিক: রিজেক্ট করলে ইউজারের ব্যালেন্সে টাকা ফেরত যাবে
+        // রিফান্ড লজিক: রিজেক্ট করলে ইউজারের ব্যালেন্সে টাকা ফেরত যাবে (একবারই — ইউজার অ্যাপ আর
+        // আলাদাভাবে রিফান্ড দেয় না, শুধু এখান থেকেই টাকা যোগ হয়, তাই ডাবল পেমেন্ট হওয়ার সুযোগ নেই)।
         const db = fb();
+        const user = findUser(req.userId);
         if (db) {
           db.ref('mahimUsers/' + req.userId + '/balance').transaction(current => (current || 0) + (req.amount || 0));
-        } else {
-          const user = findUser(req.userId);
+          // লোকাল users অ্যারেও ব্যালেন্স আপডেট করে রাখা হচ্ছে — নাহলে নিচের persistUsersAndWithdraws()
+          // পুরনো (রিফান্ডের আগের) ব্যালেন্স দিয়ে পুরো ইউজার অবজেক্ট Firebase-এ ওভাররাইট করে দিতে
+          // পারত এবং উপরের transaction-এর রেজাল্ট মুছে যেতে পারত (রেস কন্ডিশন)।
           if (user) {
             user.balance = (user.balance || 0) + (req.amount || 0);
           }
+        } else if (user) {
+          user.balance = (user.balance || 0) + (req.amount || 0);
         }
       }
       
@@ -1553,6 +1686,15 @@
       document.getElementById('reqModal').classList.remove('show');
     };
 
+    // মেইন অ্যাপের usernameFromEmail() এর সাথে হুবহু মিল রেখে — যাতে অ্যাডমিন প্যানেলেও
+    // ইউজারের প্রোফাইল কার্ডে দেখানো @username (যেমন tg<telegramId>@telegram.user ইমেইল থেকে
+    // @tg<telegramId>) ঠিক একইভাবে দেখা যায়।
+    function usernameFromEmail(email) {
+      const local = (email || '').split('@')[0] || 'user';
+      const clean = local.replace(/[^a-zA-Z0-9_]/g, '') || 'user';
+      return '@' + clean;
+    }
+
     function renderUsers() {
       pageTitle.textContent = '👥 Users & Balance';
       const totalBalance = users.reduce((s,u)=>s+u.balance,0);
@@ -1560,9 +1702,13 @@
 
       const rows = users.map(u => {
         const safeName = u.name || 'Unknown User'; 
-        const safePhone = u.phone || 'No Phone';
+        const safeHandle = u.email ? usernameFromEmail(u.email) : (u.phone || 'No Phone');
         const initials = safeName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-        
+        // মেইন অ্যাপ প্রোফাইল কার্ডে "UID: ..." হিসেবে u.uid (১০ ডিজিটের জেনারেটেড UID) দেখায়,
+        // u.id নয় (যেটা আসলে Firebase Auth key / fallback_... ইন্টারনাল আইডি)। পুরনো কিছু
+        // ইউজারের uid ফিল্ড না থাকলে (মাইগ্রেশনের আগের ডেটা) u.id ফলব্যাক হিসেবে দেখানো হয়।
+        const displayUid = u.uid || u.id;
+
         return `
           <tr>
             <td>
@@ -1570,12 +1716,12 @@
                 <div class="user-avatar">${initials}</div>
                 <div>
                   <div style="font-weight:600;">${safeName}</div>
-                  <div style="font-size:0.78rem;color:var(--muted);">${safePhone}</div>
+                  <div style="font-size:0.78rem;color:var(--muted);">${safeHandle}</div>
                 </div>
               </div>
             </td>
             <td>
-              <div style="font-size:0.85rem;font-weight:600;">${u.id}</div>
+              <div style="font-size:0.85rem;font-weight:600;">${displayUid}</div>
             </td>
             <td style="font-weight:700;color:var(--primary);">${u.balance || 0} ${adminConfig.currency}</td>
             <td>${u.totalEarned || 0} ${adminConfig.currency}</td>
@@ -1736,6 +1882,15 @@
 
     let submissionsFilter = 'pending';
 
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function renderSubmissions() {
       pageTitle.textContent = '📷 Task Screenshots';
       const submissions = getSubmissions();
@@ -1752,11 +1907,13 @@
         const statusClass = s.status === 'pending' ? 'status-pending' : s.status === 'approved' ? 'status-approved' : 'status-rejected';
         const statusLabel = s.status === 'pending' ? 'পেন্ডিং' : s.status === 'approved' ? 'এপ্রুভড' : 'রিজেক্টেড';
         const img = s.image || '';
+        const noteHtml = s.note ? `<div class="ss-card-note">📝 ${escapeHtml(s.note)}</div>` : '';
         return `
           <div class="ss-card">
             <img src="${img}" onclick="openSsFullview('${s.id}')" onerror="this.style.opacity='0.3'">
             <div class="ss-card-title">${s.taskTitle || 'Task'}</div>
             <div class="ss-card-meta">${s.userName || s.userId || ''} • ${s.date || ''}</div>
+            ${noteHtml}
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
               <span class="status-pill ${statusClass}">${statusLabel}</span>
               ${s.status === 'pending' ? `
@@ -1930,6 +2087,14 @@
       const sub = submissions.find(s => s.id === subId);
       if (!sub) return;
       document.getElementById('ssFullviewImg').src = sub.image || '';
+      const noteEl = document.getElementById('ssFullviewNote');
+      if (sub.note) {
+        noteEl.textContent = '📝 ' + sub.note;
+        noteEl.classList.add('show');
+      } else {
+        noteEl.textContent = '';
+        noteEl.classList.remove('show');
+      }
       document.getElementById('ssFullviewOverlay').classList.add('show');
     };
 
