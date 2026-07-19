@@ -904,6 +904,8 @@
       adSlot3Enabled: false,
       adSlot4Enabled: false,
       minReferralsRequired: 10,
+      // উইথড্র করার আগে অন্তত কয়টা টাস্ক অ্যাপ্রুভড থাকতে হবে (রেফার শর্তের পাশাপাশি) — 0 মানে বন্ধ
+      minTasksRequired: 0,
       withdrawFeePercent: 20,
       referralBonus: 1,
       telegramBotAppUrl: "https://t.me/Go_tasks_ern_bot/app"
@@ -1157,6 +1159,7 @@
             <div class="form-group"><label>Min Withdraw</label><input type="number" class="form-control" id="minWithdraw" value="${adminConfig.minWithdraw}"></div>
             <div class="form-group"><label>Max Withdraw</label><input type="number" class="form-control" id="maxWithdraw" value="${adminConfig.maxWithdraw}"></div>
             <div class="form-group"><label>উইথড্রর জন্য ন্যূনতম রেফার সংখ্যা</label><input type="number" class="form-control" id="minReferralsRequired" value="${adminConfig.minReferralsRequired !== undefined ? adminConfig.minReferralsRequired : 10}" min="0"></div>
+            <div class="form-group"><label>উইথড্রর জন্য ন্যূনতম টাস্ক কমপ্লিট সংখ্যা</label><input type="number" class="form-control" id="minTasksRequired" value="${adminConfig.minTasksRequired !== undefined ? adminConfig.minTasksRequired : 0}" min="0"></div>
             <div class="form-group"><label>উইথড্র চার্জ (%)</label><input type="number" class="form-control" id="withdrawFeePercent" value="${adminConfig.withdrawFeePercent !== undefined ? adminConfig.withdrawFeePercent : 20}" min="0" max="100" step="0.01"></div>
             <div class="form-group"><label>প্রতি রেফারে বোনাস (${adminConfig.currency || 'TK'})</label><input type="number" class="form-control" id="referralBonus" value="${adminConfig.referralBonus !== undefined ? adminConfig.referralBonus : 1}" min="0" step="0.01"></div>
             <div class="form-group"><label>টেলিগ্রাম বট App URL (রেফার লিংকের জন্য)</label><input type="text" class="form-control" id="telegramBotAppUrl" value="${adminConfig.telegramBotAppUrl || 'https://t.me/Go_tasks_ern_bot/app'}"></div>
@@ -1172,6 +1175,7 @@
       adminConfig.minWithdraw = parseInt(document.getElementById('minWithdraw').value);
       adminConfig.maxWithdraw = parseInt(document.getElementById('maxWithdraw').value);
       adminConfig.minReferralsRequired = parseInt(document.getElementById('minReferralsRequired').value) || 0;
+      adminConfig.minTasksRequired = parseInt(document.getElementById('minTasksRequired').value) || 0;
       adminConfig.withdrawFeePercent = parseFloat(document.getElementById('withdrawFeePercent').value) || 0;
       adminConfig.referralBonus = parseFloat(document.getElementById('referralBonus').value) || 0;
       adminConfig.telegramBotAppUrl = document.getElementById('telegramBotAppUrl').value.trim() || 'https://t.me/Go_tasks_ern_bot/app';
@@ -1552,6 +1556,13 @@
         
         const statusClass = r.status === 'pending' ? 'status-pending' : r.status === 'approved' ? 'status-approved' : 'status-rejected';
         const statusLabel = r.status === 'pending' ? 'পেন্ডিং' : r.status === 'approved' ? 'এপ্রুভড' : 'রিজেক্টেড';
+
+        // পুরোনো রিকোয়েস্টে (যেগুলো এই ফিচার আসার আগে জমা হয়েছিল) feeAmount/receiveAmount সেভ করা
+        // নেই — সেক্ষেত্রে বর্তমান withdrawFeePercent দিয়ে হিসাব করে দেখানো হচ্ছে (ফলব্যাক)।
+        const hasSavedFee = r.receiveAmount !== undefined && r.receiveAmount !== null;
+        const feePercentDisplay = hasSavedFee ? r.feePercent : (adminConfig.withdrawFeePercent || 0);
+        const feeAmountDisplay = hasSavedFee ? r.feeAmount : ((r.amount || 0) * feePercentDisplay / 100);
+        const receiveAmountDisplay = hasSavedFee ? r.receiveAmount : ((r.amount || 0) - feeAmountDisplay);
         return `
           <tr>
             <td>
@@ -1563,7 +1574,13 @@
                 </div>
               </div>
             </td>
-            <td style="font-weight:700;color:var(--primary);">${r.amount || 0} ${adminConfig.currency}</td>
+            <td style="font-weight:700;color:var(--primary);">
+              ${r.amount || 0} ${adminConfig.currency}
+              <div style="font-weight:500;font-size:0.76rem;margin-top:2px;">
+                <span style="color:#e91e63;">চার্জ: ${feeAmountDisplay.toFixed(2)} (${feePercentDisplay}%)</span><br>
+                <span style="color:#2e7d32;">পাবেন: ${receiveAmountDisplay.toFixed(2)} ${adminConfig.currency}</span>
+              </div>
+            </td>
             <td>${r.method || 'N/A'}<br><span style="font-size:0.78rem;color:var(--muted);">${r.number || 'N/A'}</span></td>
             <td>${r.date || 'N/A'}</td>
             <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
@@ -1619,13 +1636,19 @@
       const body = document.getElementById('reqModalBody');
 
       if (decision === 'approved') {
+        const hasSavedFee = req.receiveAmount !== undefined && req.receiveAmount !== null;
+        const feePercentDisplay = hasSavedFee ? req.feePercent : (adminConfig.withdrawFeePercent || 0);
+        const feeAmountDisplay = hasSavedFee ? req.feeAmount : ((req.amount || 0) * feePercentDisplay / 100);
+        const receiveAmountDisplay = hasSavedFee ? req.receiveAmount : ((req.amount || 0) - feeAmountDisplay);
         body.innerHTML = `
           <h4>✅ উইথড্র এপ্রুভ করবেন?</h4>
           <div class="modal-row"><span>ইউজার</span><strong>${req.userName}</strong></div>
-          <div class="modal-row"><span>পরিমাণ</span><strong>${req.amount} ${adminConfig.currency}</strong></div>
+          <div class="modal-row"><span>রিকোয়েস্ট করা পরিমাণ</span><strong>${req.amount} ${adminConfig.currency}</strong></div>
+          <div class="modal-row"><span>উইথড্র চার্জ</span><strong style="color:#e91e63;">${feeAmountDisplay.toFixed(2)} ${adminConfig.currency} (${feePercentDisplay}%)</strong></div>
+          <div class="modal-row"><span>ইউজারকে পাঠাতে হবে</span><strong style="color:#2e7d32;">${receiveAmountDisplay.toFixed(2)} ${adminConfig.currency}</strong></div>
           <div class="modal-row"><span>মেথড</span><strong>${req.method} - ${req.number}</strong></div>
           <div class="modal-row"><span>ইউজারের ব্যালেন্স</span><strong>${user ? user.balance : 'N/A'} ${adminConfig.currency}</strong></div>
-          <p style="font-size:0.85rem;color:var(--muted);margin-top:12px;">এপ্রুভ করলে এই পরিমাণ টাকা ইউজারকে পাঠানো হয়েছে বলে গণ্য হবে। (টাকা রিকোয়েস্ট করার সময়ই কাটা হয়েছে)</p>
+          <p style="font-size:0.85rem;color:var(--muted);margin-top:12px;">এপ্রুভ করলে চার্জ বাদ দিয়ে উপরের "ইউজারকে পাঠাতে হবে" পরিমাণটা ইউজারকে ম্যানুয়ালি পাঠাতে হবে (Bkash/Nagad/Rocket-এ)। রিকোয়েস্ট করা পুরো পরিমাণ ইউজারের ব্যালেন্স থেকে আগেই কাটা হয়ে গিয়েছিল।</p>
           <div class="modal-actions">
             <button class="btn btn-outline" onclick="closeModal()">বাতিল</button>
             <button class="btn btn-success" onclick="confirmDecision('${reqId}','approved')">নিশ্চিত এপ্রুভ</button>
@@ -1820,11 +1843,20 @@
         </div>`;
       }).join('') : `<div class="empty-state"><i class="fa-solid fa-inbox"></i><div>কোনো হিস্ট্রি নেই</div></div>`;
 
+      const referredUsers = users.filter(u => u['referredBy'] === userId);
+      const totalReferrals = referredUsers.length;
+      const submissionsForReferral = getSubmissions();
+      const activeReferrals = referredUsers.filter(ru =>
+        submissionsForReferral.some(s => s.userId === ru.id && s.status === 'approved')
+      ).length;
+
       body.innerHTML = `
         <h4>${user.name} এর হিস্ট্রি</h4>
         <div class="modal-row"><span>বর্তমান ব্যালেন্স</span><strong>${user.balance} ${adminConfig.currency}</strong></div>
         <div class="modal-row"><span>মোট আয়</span><strong>${user.totalEarned} ${adminConfig.currency}</strong></div>
         <div class="modal-row"><span>মোট উইথড্র</span><strong>${user.totalWithdrawn} ${adminConfig.currency}</strong></div>
+        <div class="modal-row"><span>মোট রেফার</span><strong>${totalReferrals}</strong></div>
+        <div class="modal-row"><span>Active রেফার</span><strong>${activeReferrals}</strong></div>
         <div class="history-list">${historyHtml}</div>
         <div class="modal-actions">
           <button class="btn btn-outline" style="flex:1;" onclick="closeModal()">বন্ধ করুন</button>
